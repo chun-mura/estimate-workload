@@ -36,7 +36,8 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
    name/category/tags only) to fetch anchors. Assign O/M/P per task per the
    methodology, anchored when anchors exist, with a one-line rationale.
 6. **Correction.** Call CALC `reference-class` again, now including each
-   task's `m` and `p`. Where it returns `corrected_m`/`corrected_p`, use them.
+   task's `o`, `m`, and `p`. Where it returns corrected values
+   (`corrected_o`/`corrected_m`/`corrected_p`), use them.
    Where skipped, note "uncorrected (insufficient data: N similar records)".
 7. **Aggregate.** Call CALC `simulate` with the final O/M/P values
    (default trials). Then build the AI-assisted view: call CALC `simulate`

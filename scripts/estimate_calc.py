@@ -202,41 +202,46 @@ def cmd_append_history(payload):
             raise CalcError(f"{label}: 'tags' must be a list of strings")
         validate_three_point(t, label)
 
-    now = datetime.now()
-    base = now.strftime("%Y%m%dT%H%M%S") + "-" + slug.lower()
-    existing = _existing_run_ids(path)
-    run_id, n = base, 2
-    while run_id in existing:
-        run_id = f"{base}-{n}"
-        n += 1
-
-    lines = []
-    for i, t in enumerate(tasks, 1):
-        rec = {
-            "schema_version": SCHEMA_VERSION,
-            "run_id": run_id,
-            "id": f"{run_id}-{i:02d}",
-            "date": now.strftime("%Y-%m-%d"),
-            "task": t["task"],
-            "category": t["category"],
-            "tags": t.get("tags", []),
-            "o": t["o"],
-            "m": t["m"],
-            "p": t["p"],
-            "pert": pert_mean(t["o"], t["m"], t["p"]),
-            "actual": None,
-            "ai_assisted": None,
-            "status": "estimated",
-        }
-        lines.append(json.dumps(rec, ensure_ascii=False))
+    lock_timeout = payload.get("lock_timeout", 5.0)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    data = ("\n".join(lines) + "\n").encode("utf-8")
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    lock = _acquire_lock(path, lock_timeout)
     try:
-        os.write(fd, data)
+        now = datetime.now()
+        base = now.strftime("%Y%m%dT%H%M%S") + "-" + slug.lower()
+        existing = _existing_run_ids(path)
+        run_id, n = base, 2
+        while run_id in existing:
+            run_id = f"{base}-{n}"
+            n += 1
+
+        lines = []
+        for i, t in enumerate(tasks, 1):
+            rec = {
+                "schema_version": SCHEMA_VERSION,
+                "run_id": run_id,
+                "id": f"{run_id}-{i:02d}",
+                "date": now.strftime("%Y-%m-%d"),
+                "task": t["task"],
+                "category": t["category"],
+                "tags": t.get("tags", []),
+                "o": t["o"],
+                "m": t["m"],
+                "p": t["p"],
+                "pert": pert_mean(t["o"], t["m"], t["p"]),
+                "actual": None,
+                "ai_assisted": None,
+                "status": "estimated",
+            }
+            lines.append(json.dumps(rec, ensure_ascii=False))
+        data = ("\n".join(lines) + "\n").encode("utf-8")
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        try:
+            os.write(fd, data)
+        finally:
+            os.close(fd)
+        return {"run_id": run_id, "appended": len(lines)}
     finally:
-        os.close(fd)
-    return {"run_id": run_id, "appended": len(lines)}
+        os.remove(lock)
 
 
 def _acquire_lock(path, timeout):
@@ -328,8 +333,8 @@ def cmd_reference_class(payload):
             reverse=True,
         )
         anchors = [
-            {k: r[k] for k in ("task", "o", "m", "p", "pert", "actual",
-                               "ai_assisted", "tags")}
+            {k: r.get(k) for k in ("task", "o", "m", "p", "pert", "actual",
+                                    "ai_assisted", "tags")}
             for r in ranked[:max_anchors]
         ]
         entry = {"name": t.get("name", ""), "anchors": anchors}
@@ -345,7 +350,10 @@ def cmd_reference_class(payload):
                 "ratio_p80": round(r80, 2),
             }
             if _is_number(t.get("m")):
-                correction["corrected_m"] = round(t["m"] * r50, 2)
+                corrected_m = t["m"] * r50
+                correction["corrected_m"] = round(corrected_m, 2)
+                if _is_number(t.get("o")):
+                    correction["corrected_o"] = round(min(t["o"], corrected_m), 2)
             if _is_number(t.get("p")):
                 correction["corrected_p"] = round(t["p"] * r80, 2)
             entry["correction"] = correction
@@ -379,9 +387,9 @@ def cmd_calibration(payload):
     ai_factors = {}
     for cat in by_cat:
         ai = [r["actual"] / r["pert"] for r in done
-              if r["category"] == cat and r["ai_assisted"] is True]
+              if r["category"] == cat and r.get("ai_assisted") is True]
         human = [r["actual"] / r["pert"] for r in done
-                 if r["category"] == cat and r["ai_assisted"] is False]
+                 if r["category"] == cat and r.get("ai_assisted") is False]
         if len(ai) >= 3 and len(human) >= 3:
             ai_factors[cat] = {
                 "factor": round(percentile(ai, 50) / percentile(human, 50), 2),
@@ -471,6 +479,10 @@ def main(argv=None):
         return 1
     except json.JSONDecodeError as exc:
         json.dump({"error": f"invalid JSON payload: {exc}"}, sys.stderr)
+        sys.stderr.write("\n")
+        return 1
+    except Exception as exc:
+        json.dump({"error": f"unexpected: {type(exc).__name__}: {exc}"}, sys.stderr)
         sys.stderr.write("\n")
         return 1
     json.dump(result, sys.stdout, ensure_ascii=False)

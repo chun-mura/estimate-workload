@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import os
 import pathlib
@@ -138,6 +140,24 @@ class TestAppendHistory(HistoryBase):
         with self.assertRaises(ec.CalcError):
             self.append(tasks=[{"task": "x", "category": "docs", "tags": [],
                                 "o": 5, "m": 2, "p": 3}])
+
+    def test_lock_contention_fails_fast(self):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        lock = self.path + ".lock"
+        open(lock, "w").close()
+        try:
+            with self.assertRaises(ec.CalcError):
+                ec.cmd_append_history({
+                    "history_path": self.path, "slug": "x",
+                    "tasks": [{"task": "x", "category": "docs", "tags": [],
+                               "o": 1, "m": 2, "p": 3}],
+                    "lock_timeout": 0.2,
+                })
+        finally:
+            os.remove(lock)
+        # lock released -> a normal append now succeeds
+        out = self.append()
+        self.assertEqual(out["appended"], 1)
 
 
 class TestReadHistory(HistoryBase):
@@ -288,6 +308,30 @@ class TestReferenceClass(HistoryBase):
         })
         self.assertEqual(out["tasks"][0]["anchors"], [])
 
+    def test_corrected_o_kept_below_corrected_m(self):
+        # actual/pert ratio 0.4 for all 5 records -> r50 = 0.4
+        recs = [_done_record(i, pert=10.0, actual=4.0) for i in range(5)]
+        self.write_done(recs)
+        out = ec.cmd_reference_class({
+            "history_path": self.path,
+            "tasks": [{"name": "t", "category": "backend-api", "tags": [],
+                       "o": 4, "m": 8, "p": 16}],
+        })
+        corr = out["tasks"][0]["correction"]
+        self.assertEqual(corr["corrected_m"], 3.2)
+        self.assertEqual(corr["corrected_o"], 3.2)
+        self.assertLessEqual(corr["corrected_o"], corr["corrected_m"])
+
+    def test_missing_ai_assisted_key_does_not_raise(self):
+        rec = _done_record(1)
+        del rec["ai_assisted"]
+        self.write_done([rec])
+        out = ec.cmd_reference_class({
+            "history_path": self.path,
+            "tasks": [{"name": "t", "category": "backend-api", "tags": []}],
+        })
+        self.assertIsNone(out["tasks"][0]["anchors"][0]["ai_assisted"])
+
 
 class TestCalibration(TestReferenceClass):
     def test_no_completed_records(self):
@@ -316,6 +360,25 @@ class TestCalibration(TestReferenceClass):
         self.write_done(recs)
         out = ec.cmd_calibration({"history_path": self.path})
         self.assertEqual(out["ai_assistance_factors"], {})
+
+    def test_missing_ai_assisted_key_does_not_raise(self):
+        # 3 AI + 3 human records plus one record with the key entirely
+        # absent (schema-valid per schema_error, which only checks .get).
+        recs = [_done_record(i, actual=5.0, ai=True) for i in range(3)]
+        recs += [_done_record(i + 3, actual=10.0, ai=False) for i in range(3)]
+        no_key = _done_record(99)
+        del no_key["ai_assisted"]
+        recs.append(no_key)
+        self.write_done(recs)
+        out = ec.cmd_calibration({"history_path": self.path})
+        self.assertEqual(out["count"], 7)
+        # the keyless record is excluded from both ai and human groups
+        self.assertEqual(
+            out["ai_assistance_factors"]["backend-api"]["ai_count"], 3
+        )
+        self.assertEqual(
+            out["ai_assistance_factors"]["backend-api"]["human_count"], 3
+        )
 
 
 class TestDistribute(unittest.TestCase):
@@ -349,6 +412,15 @@ class TestDistribute(unittest.TestCase):
         out = ec.cmd_distribute({"total": 100, "tasks": tasks})
         self.assertTrue(all(s["actual"] >= 0 for s in out["shares"]))
         self.assertAlmostEqual(sum(s["actual"] for s in out["shares"]), 100)
+
+
+class TestMainErrorContract(unittest.TestCase):
+    def test_unexpected_exception_emits_error_json(self):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            rc = ec.main(["simulate", "--input", "/nonexistent/file.json"])
+        self.assertEqual(rc, 1)
+        self.assertIn("error", stderr.getvalue())
 
 
 if __name__ == "__main__":
