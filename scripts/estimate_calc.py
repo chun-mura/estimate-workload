@@ -415,13 +415,18 @@ def cmd_distribute(payload):
         if not _is_number(t.get("pert")) or t["pert"] <= 0:
             raise CalcError(f"distribute: tasks[{i}] 'pert' must be > 0")
     pert_sum = sum(t["pert"] for t in tasks)
-    shares = []
-    allocated = 0.0
-    for t in tasks[:-1]:
-        share = round(total * t["pert"] / pert_sum, 1)
-        shares.append({"id": t["id"], "actual": share})
-        allocated += share
-    shares.append({"id": tasks[-1]["id"], "actual": round(total - allocated, 1)})
+    total_units = round(total * 10)
+    raws = [total_units * t["pert"] / pert_sum for t in tasks]
+    bases = [int(r) for r in raws]
+    remainders = [r - b for r, b in zip(raws, bases)]
+    leftover = total_units - sum(bases)
+    order = sorted(range(len(tasks)), key=lambda i: remainders[i], reverse=True)
+    for i in order[:leftover]:
+        bases[i] += 1
+    shares = [
+        {"id": t["id"], "actual": units / 10.0}
+        for t, units in zip(tasks, bases)
+    ]
     return {"shares": shares}
 
 

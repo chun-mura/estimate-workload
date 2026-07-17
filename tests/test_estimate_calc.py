@@ -329,7 +329,7 @@ class TestDistribute(unittest.TestCase):
         self.assertEqual(shares, {"a": 2.0, "b": 6.0, "c": 2.0})
         self.assertAlmostEqual(sum(shares.values()), 10)
 
-    def test_rounding_remainder_lands_on_last(self):
+    def test_rounding_remainder_distributed(self):
         out = ec.cmd_distribute({
             "total": 10,
             "tasks": [{"id": "a", "pert": 1.0}, {"id": "b", "pert": 1.0},
@@ -342,6 +342,13 @@ class TestDistribute(unittest.TestCase):
             ec.cmd_distribute({"total": 0, "tasks": [{"id": "a", "pert": 1}]})
         with self.assertRaises(ec.CalcError):
             ec.cmd_distribute({"total": 5, "tasks": [{"id": "a", "pert": 0}]})
+
+    def test_skewed_perts_never_produce_negative_share(self):
+        tasks = [{"id": f"t{i}", "pert": 1.0} for i in range(19)]
+        tasks.append({"id": "tiny", "pert": 0.001})
+        out = ec.cmd_distribute({"total": 100, "tasks": tasks})
+        self.assertTrue(all(s["actual"] >= 0 for s in out["shares"]))
+        self.assertAlmostEqual(sum(s["actual"] for s in out["shares"]), 100)
 
 
 if __name__ == "__main__":
