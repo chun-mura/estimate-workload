@@ -299,6 +299,60 @@ def cmd_update_actual(history_path, task_id, actual, ai_assisted, lock_timeout=5
         os.remove(lock)
 
 
+def cmd_reference_class(payload):
+    path = payload.get("history_path")
+    if not isinstance(path, str) or not path:
+        raise CalcError("reference-class: 'history_path' is required")
+    tasks = payload.get("tasks")
+    if not isinstance(tasks, list) or not tasks:
+        raise CalcError("reference-class: 'tasks' must be a non-empty list")
+    min_records = payload.get("min_records", 5)
+    max_anchors = payload.get("max_anchors", 5)
+    records, warnings = read_history(path)
+    done = [
+        r for r in records
+        if r["status"] == "done" and _is_number(r.get("actual"))
+        and r["actual"] > 0 and r["pert"] > 0
+    ]
+    results = []
+    for i, t in enumerate(tasks):
+        if t.get("category") not in CATEGORIES:
+            raise CalcError(
+                f"reference-class: tasks[{i}] category {t.get('category')!r} unknown"
+            )
+        tags = set(t.get("tags") or [])
+        same_cat = [r for r in done if r["category"] == t["category"]]
+        ranked = sorted(
+            same_cat,
+            key=lambda r: (len(tags & set(r["tags"])), r["date"]),
+            reverse=True,
+        )
+        anchors = [
+            {k: r[k] for k in ("task", "o", "m", "p", "pert", "actual",
+                               "ai_assisted", "tags")}
+            for r in ranked[:max_anchors]
+        ]
+        entry = {"name": t.get("name", ""), "anchors": anchors}
+        ratios = [r["actual"] / r["pert"] for r in same_cat]
+        if len(ratios) < min_records:
+            entry["correction"] = {"skipped": "insufficient_data", "count": len(ratios)}
+        else:
+            r50 = percentile(ratios, 50)
+            r80 = percentile(ratios, 80)
+            correction = {
+                "count": len(ratios),
+                "ratio_p50": round(r50, 2),
+                "ratio_p80": round(r80, 2),
+            }
+            if _is_number(t.get("m")):
+                correction["corrected_m"] = round(t["m"] * r50, 2)
+            if _is_number(t.get("p")):
+                correction["corrected_p"] = round(t["p"] * r80, 2)
+            entry["correction"] = correction
+        results.append(entry)
+    return {"tasks": results, "warnings": warnings}
+
+
 def _load_payload(spec):
     if spec == "-":
         return json.load(sys.stdin)
@@ -309,6 +363,7 @@ def _load_payload(spec):
 PAYLOAD_COMMANDS = {
     "simulate": cmd_simulate,
     "append-history": cmd_append_history,
+    "reference-class": cmd_reference_class,
 }
 
 

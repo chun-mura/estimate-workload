@@ -222,5 +222,72 @@ class TestUpdateActual(HistoryBase):
             os.remove(lock)
 
 
+def _done_record(i, category="backend-api", tags=(), pert=10.0, actual=10.0,
+                 ai=False, date="2026-06-01"):
+    return {
+        "schema_version": 1, "run_id": f"r{i}", "id": f"r{i}-01", "date": date,
+        "task": f"past task {i}", "category": category, "tags": list(tags),
+        "o": pert * 0.5, "m": pert, "p": pert * 2, "pert": pert,
+        "actual": actual, "ai_assisted": ai, "status": "done",
+    }
+
+
+class TestReferenceClass(HistoryBase):
+    def write_done(self, records):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        with open(self.path, "a", encoding="utf-8") as fh:
+            for r in records:
+                fh.write(json.dumps(r) + "\n")
+
+    def test_insufficient_data_skips_correction_but_returns_anchors(self):
+        self.write_done([_done_record(i, tags=["auth"]) for i in range(3)])
+        out = ec.cmd_reference_class({
+            "history_path": self.path,
+            "tasks": [{"name": "t", "category": "backend-api", "tags": ["auth"]}],
+        })
+        entry = out["tasks"][0]
+        self.assertEqual(entry["correction"], {"skipped": "insufficient_data", "count": 3})
+        self.assertEqual(len(entry["anchors"]), 3)
+
+    def test_correction_uses_ratio_percentiles(self):
+        # actual/pert ratios: 1.0, 1.0, 1.0, 2.0, 2.0 -> p50 = 1.0
+        recs = [_done_record(i, actual=10.0) for i in range(3)]
+        recs += [_done_record(i + 3, actual=20.0) for i in range(2)]
+        self.write_done(recs)
+        out = ec.cmd_reference_class({
+            "history_path": self.path,
+            "tasks": [{"name": "t", "category": "backend-api", "tags": [],
+                       "m": 8, "p": 16}],
+        })
+        corr = out["tasks"][0]["correction"]
+        self.assertEqual(corr["count"], 5)
+        self.assertEqual(corr["ratio_p50"], 1.0)
+        self.assertEqual(corr["corrected_m"], 8.0)
+        self.assertEqual(corr["corrected_p"], round(16 * corr["ratio_p80"], 2))
+
+    def test_anchors_ranked_by_tag_overlap(self):
+        self.write_done([
+            _done_record(1, tags=["auth", "rest"]),
+            _done_record(2, tags=["ui"]),
+            _done_record(3, tags=["auth"]),
+        ])
+        out = ec.cmd_reference_class({
+            "history_path": self.path, "max_anchors": 2,
+            "tasks": [{"name": "t", "category": "backend-api",
+                       "tags": ["auth", "rest"]}],
+        })
+        anchors = out["tasks"][0]["anchors"]
+        self.assertEqual(len(anchors), 2)
+        self.assertEqual(anchors[0]["task"], "past task 1")
+
+    def test_other_categories_excluded(self):
+        self.write_done([_done_record(1, category="docs")])
+        out = ec.cmd_reference_class({
+            "history_path": self.path,
+            "tasks": [{"name": "t", "category": "backend-api", "tags": []}],
+        })
+        self.assertEqual(out["tasks"][0]["anchors"], [])
+
+
 if __name__ == "__main__":
     unittest.main()
