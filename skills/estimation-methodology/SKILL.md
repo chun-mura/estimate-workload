@@ -77,7 +77,9 @@ common project risk. Every report states the resolved correlation assumption.
 
 ## Two effort views
 
-Report BOTH, clearly labeled:
+Report BOTH, clearly labeled (unless the user declined the AI-assisted view
+at intake — then report only the traditional view and say the AI-assisted
+view was skipped at the user's request):
 - **Traditional effort:** the simulated totals as-is, in hours and person-days
   (default 8 h/day; honor `.estimate/config.json` `hours_per_day` if present).
 - **AI-assisted effort:** per-category multipliers applied to task hours before

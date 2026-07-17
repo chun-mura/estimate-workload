@@ -288,6 +288,12 @@ class TestRunSummary(HistoryBase):
              "category": "docs", "pert": 2.0},
         ])
 
+    def test_null_ai_assisted_uses_traditional_p80_basis(self):
+        out = ec.cmd_run_summary(self.payload(ai_assisted=None))
+        self.assertIsNone(out["ai_assisted"])
+        self.assertEqual(out["size"]["basis"], "traditional_p80")
+        self.assertEqual(out["size"]["label"], "L")
+
     def test_default_label_boundaries_are_inclusive(self):
         for p80, expected in ((4.0, "S"), (4.1, "M"), (16.0, "M"), (16.1, "L")):
             with self.subTest(p80=p80):
@@ -346,6 +352,7 @@ class TestRunSummary(HistoryBase):
     def test_rejects_missing_or_invalid_totals(self):
         bad_payloads = [
             self.payload(traditional={"mean": 1, "p50": 1}),
+            self.payload(traditional=None),
             self.payload(ai_assisted={"mean": 1, "p50": 1, "p80": -1}),
             self.payload(ai_assisted={"mean": 1, "p50": 1, "p80": True}),
         ]

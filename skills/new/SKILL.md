@@ -19,10 +19,13 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
 1. **Intake.** Read every provided document. For each unreadable or missing
    path: tell the user, treat it as not provided, and carry the gap into
    step 2.
-2. **Gap check.** If critical information is missing (scope boundary,
-   definition of done, non-functional constraints), ask AT MOST 5 questions
-   with the AskUserQuestion tool. Record every unanswered gap as an assumption;
-   assumptions widen P in step 5.
+2. **Gap check.** ALWAYS ask, with the AskUserQuestion tool, whether to
+   include the AI-assisted effort view (unless the request already states it
+   explicitly). Additionally, if critical information is missing (scope
+   boundary, definition of done, non-functional constraints), ask AT MOST 5
+   questions in the same call. Record every unanswered gap as an assumption;
+   assumptions widen P in step 5. If the AI-assisted question goes unanswered,
+   include the view (current default behavior).
 3. **Parallel analysis.** In ONE message dispatch both agents:
    - `estimate:spec-analyzer` with all requirement sources.
    - `estimate:code-analyzer` with the change description — SKIP for
@@ -43,7 +46,8 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
 7. **Aggregate.** Build the CALC `simulate` payload with the final O/M/P
    values. If `.estimate/config.json` contains `correlation`, add that value
    to the payload; otherwise omit it so CALC owns the `0.3` default. Then build
-   the AI-assisted view: call CALC `simulate` again with the same correlation
+   the AI-assisted view — SKIP this second call if the user declined it in
+   step 2: call CALC `simulate` again with the same correlation
    override behavior and tasks plus a per-task `"factor"` — the category's
    learned factor (from CALC `calibration`) when available, else the default
    from the methodology references. The script does the scaling; never
@@ -56,7 +60,7 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
    2. Build a CALC `run-summary` payload with the `run_id`,
       `history_path: ".estimate/history.jsonl"`, and the `traditional` and
       `ai_assisted` `mean`/`p50`/`p80` totals returned by the two `simulate`
-      calls. If `.estimate/config.json` contains `size_boundaries`, pass it as
+      calls (`ai_assisted: null` when the view was declined in step 2). If `.estimate/config.json` contains `size_boundaries`, pass it as
       `boundaries`; otherwise omit `boundaries`. Do not pass tasks or compute a
       size label. Keep the summary path
       `.estimate/runs/<run_id>.json` when the call succeeds.
@@ -76,6 +80,8 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
    - Traditional totals: P50 and P80 in hours AND person-days (8 h/day unless
      `.estimate/config.json` sets `hours_per_day`).
    - AI-assisted totals: P50/P80, with each factor's source (learned/default).
+     When declined in step 2, replace this section with one line: "AI-assisted
+     view: skipped at the user's request."
    - Assumptions, Risks (including any agent failure), Out of scope.
    - Calibration note: which corrections applied, which were skipped.
    - Footer, only when `run-summary` succeeded: "Machine-readable summary:

@@ -193,10 +193,13 @@ def _required_string(payload, key, command):
     return value
 
 
-def _validated_totals(payload, key):
+def _validated_totals(payload, key, allow_null=False):
     totals = payload.get(key)
+    if allow_null and totals is None:
+        return None
     if not isinstance(totals, dict):
-        raise CalcError(f"run-summary: '{key}' must be an object")
+        expected = "null or an object" if allow_null else "an object"
+        raise CalcError(f"run-summary: '{key}' must be {expected}")
     result = {}
     for metric in ("mean", "p50", "p80"):
         value = totals.get(metric)
@@ -255,7 +258,7 @@ def cmd_run_summary(payload):
             "run-summary: 'output_dir' must be the history project's .estimate/runs"
         )
     traditional = _validated_totals(payload, "traditional")
-    ai_assisted = _validated_totals(payload, "ai_assisted")
+    ai_assisted = _validated_totals(payload, "ai_assisted", allow_null=True)
     boundaries = _merged_size_boundaries(payload)
 
     records, _warnings = read_history(history_path)
@@ -263,7 +266,12 @@ def cmd_run_summary(payload):
     if not run_records:
         raise CalcError(f"run-summary: no history records for run_id {run_id!r}")
 
-    p80 = ai_assisted["p80"]
+    if ai_assisted is None:
+        p80 = traditional["p80"]
+        basis = "traditional_p80"
+    else:
+        p80 = ai_assisted["p80"]
+        basis = "ai_assisted_p80"
     if p80 <= boundaries["s_max_hours"]:
         label = "S"
     elif p80 <= boundaries["m_max_hours"]:
@@ -277,7 +285,7 @@ def cmd_run_summary(payload):
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "size": {
             "label": label,
-            "basis": "ai_assisted_p80",
+            "basis": basis,
             "boundaries": boundaries,
         },
         "traditional": traditional,
