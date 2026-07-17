@@ -1002,7 +1002,7 @@ git commit -m "feat: reference-class subcommand for anchors and ratio correction
   - Else `{"count", "ratio_p50", "ratio_mean", "bias", "by_category": {cat: {"count", "ratio_p50"}}, "ai_assistance_factors": {cat: {"factor", "ai_count", "human_count"}}, "warnings"}`.
   - `bias`: `"underestimating"` if overall ratio_p50 > 1.05, `"overestimating"` if < 0.95, else `"well_calibrated"`.
   - `ai_assistance_factors[cat]` only when the category has ≥ 3 done records with `ai_assisted: true` AND ≥ 3 with `ai_assisted: false`; `factor = round(p50(ai ratios) / p50(human ratios), 2)`.
-- Also produces: `cmd_distribute(payload) -> dict` — splits a run-total actual across tasks proportionally to their PERT means, so `/estimate:record` never does freehand division. Payload: `{"total": num, "tasks": [{"id": str, "pert": num}]}` → `{"shares": [{"id", "actual"}]}`. Shares rounded to 0.1 h; rounding remainder added to the last share so the sum equals `total` exactly. `total` must be positive; every `pert` must be > 0.
+- Also produces: `cmd_distribute(payload) -> dict` — splits a run-total actual across tasks proportionally to their PERT means, so `/estimate:record` never does freehand division. Payload: `{"total": num, "tasks": [{"id": str, "pert": num}]}` → `{"shares": [{"id", "actual"}]}`. Shares in 0.1 h units via largest-remainder allocation (floor each proportional share, hand leftover units to largest fractional remainders) so every share is >= 0 and the sum equals `round(total, 1)` exactly. `total` must be positive; every `pert` must be > 0. (Amended from remainder-on-last during execution: that rule could produce a negative final share; user approved the change.)
 
 - [ ] **Step 1: Write the failing tests**
 
