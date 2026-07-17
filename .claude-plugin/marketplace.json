@@ -1,0 +1,13 @@
+{
+  "name": "estimate-workload",
+  "owner": {
+    "name": "chun-mura"
+  },
+  "plugins": [
+    {
+      "name": "estimate",
+      "source": "./",
+      "description": "Scientifically-grounded effort estimation: WBS decomposition, 3-point estimates with Monte Carlo aggregation, and reference-class calibration that improves as you record actuals."
+    }
+  ]
+}
