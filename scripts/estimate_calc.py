@@ -353,6 +353,78 @@ def cmd_reference_class(payload):
     return {"tasks": results, "warnings": warnings}
 
 
+def cmd_calibration(payload):
+    path = payload.get("history_path")
+    if not isinstance(path, str) or not path:
+        raise CalcError("calibration: 'history_path' is required")
+    records, warnings = read_history(path)
+    done = [
+        r for r in records
+        if r["status"] == "done" and _is_number(r.get("actual"))
+        and r["actual"] > 0 and r["pert"] > 0
+    ]
+    if not done:
+        return {"skipped": "no_completed_records", "warnings": warnings}
+    ratios = [r["actual"] / r["pert"] for r in done]
+    p50 = percentile(ratios, 50)
+    if p50 > 1.05:
+        bias = "underestimating"
+    elif p50 < 0.95:
+        bias = "overestimating"
+    else:
+        bias = "well_calibrated"
+    by_cat = {}
+    for r in done:
+        by_cat.setdefault(r["category"], []).append(r["actual"] / r["pert"])
+    ai_factors = {}
+    for cat in by_cat:
+        ai = [r["actual"] / r["pert"] for r in done
+              if r["category"] == cat and r["ai_assisted"] is True]
+        human = [r["actual"] / r["pert"] for r in done
+                 if r["category"] == cat and r["ai_assisted"] is False]
+        if len(ai) >= 3 and len(human) >= 3:
+            ai_factors[cat] = {
+                "factor": round(percentile(ai, 50) / percentile(human, 50), 2),
+                "ai_count": len(ai),
+                "human_count": len(human),
+            }
+    return {
+        "count": len(done),
+        "ratio_p50": round(p50, 2),
+        "ratio_mean": round(statistics.fmean(ratios), 2),
+        "bias": bias,
+        "by_category": {
+            c: {"count": len(v), "ratio_p50": round(percentile(v, 50), 2)}
+            for c, v in sorted(by_cat.items())
+        },
+        "ai_assistance_factors": ai_factors,
+        "warnings": warnings,
+    }
+
+
+def cmd_distribute(payload):
+    total = payload.get("total")
+    if not _is_number(total) or total <= 0:
+        raise CalcError("distribute: 'total' must be a positive number")
+    tasks = payload.get("tasks")
+    if not isinstance(tasks, list) or not tasks:
+        raise CalcError("distribute: 'tasks' must be a non-empty list")
+    for i, t in enumerate(tasks):
+        if not isinstance(t.get("id"), str) or not t["id"]:
+            raise CalcError(f"distribute: tasks[{i}] needs a non-empty 'id'")
+        if not _is_number(t.get("pert")) or t["pert"] <= 0:
+            raise CalcError(f"distribute: tasks[{i}] 'pert' must be > 0")
+    pert_sum = sum(t["pert"] for t in tasks)
+    shares = []
+    allocated = 0.0
+    for t in tasks[:-1]:
+        share = round(total * t["pert"] / pert_sum, 1)
+        shares.append({"id": t["id"], "actual": share})
+        allocated += share
+    shares.append({"id": tasks[-1]["id"], "actual": round(total - allocated, 1)})
+    return {"shares": shares}
+
+
 def _load_payload(spec):
     if spec == "-":
         return json.load(sys.stdin)
@@ -364,6 +436,8 @@ PAYLOAD_COMMANDS = {
     "simulate": cmd_simulate,
     "append-history": cmd_append_history,
     "reference-class": cmd_reference_class,
+    "calibration": cmd_calibration,
+    "distribute": cmd_distribute,
 }
 
 

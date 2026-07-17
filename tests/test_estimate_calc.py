@@ -289,5 +289,60 @@ class TestReferenceClass(HistoryBase):
         self.assertEqual(out["tasks"][0]["anchors"], [])
 
 
+class TestCalibration(TestReferenceClass):
+    def test_no_completed_records(self):
+        out = ec.cmd_calibration({"history_path": self.path})
+        self.assertEqual(out["skipped"], "no_completed_records")
+
+    def test_bias_detection(self):
+        self.write_done([_done_record(i, actual=15.0) for i in range(4)])  # ratio 1.5
+        out = ec.cmd_calibration({"history_path": self.path})
+        self.assertEqual(out["count"], 4)
+        self.assertEqual(out["ratio_p50"], 1.5)
+        self.assertEqual(out["bias"], "underestimating")
+        self.assertEqual(out["by_category"]["backend-api"]["count"], 4)
+
+    def test_ai_factor_requires_three_of_each(self):
+        recs = [_done_record(i, actual=5.0, ai=True) for i in range(3)]      # 0.5
+        recs += [_done_record(i + 3, actual=10.0, ai=False) for i in range(3)]  # 1.0
+        self.write_done(recs)
+        out = ec.cmd_calibration({"history_path": self.path})
+        self.assertEqual(
+            out["ai_assistance_factors"]["backend-api"]["factor"], 0.5
+        )
+
+    def test_ai_factor_absent_when_sparse(self):
+        recs = [_done_record(1, ai=True), _done_record(2, ai=False)]
+        self.write_done(recs)
+        out = ec.cmd_calibration({"history_path": self.path})
+        self.assertEqual(out["ai_assistance_factors"], {})
+
+
+class TestDistribute(unittest.TestCase):
+    def test_proportional_split_sums_to_total(self):
+        out = ec.cmd_distribute({
+            "total": 10,
+            "tasks": [{"id": "a", "pert": 2.0}, {"id": "b", "pert": 6.0},
+                      {"id": "c", "pert": 2.0}],
+        })
+        shares = {s["id"]: s["actual"] for s in out["shares"]}
+        self.assertEqual(shares, {"a": 2.0, "b": 6.0, "c": 2.0})
+        self.assertAlmostEqual(sum(shares.values()), 10)
+
+    def test_rounding_remainder_lands_on_last(self):
+        out = ec.cmd_distribute({
+            "total": 10,
+            "tasks": [{"id": "a", "pert": 1.0}, {"id": "b", "pert": 1.0},
+                      {"id": "c", "pert": 1.0}],
+        })
+        self.assertAlmostEqual(sum(s["actual"] for s in out["shares"]), 10)
+
+    def test_rejects_nonpositive_total_or_pert(self):
+        with self.assertRaises(ec.CalcError):
+            ec.cmd_distribute({"total": 0, "tasks": [{"id": "a", "pert": 1}]})
+        with self.assertRaises(ec.CalcError):
+            ec.cmd_distribute({"total": 5, "tasks": [{"id": "a", "pert": 0}]})
+
+
 if __name__ == "__main__":
     unittest.main()
