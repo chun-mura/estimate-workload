@@ -54,6 +54,8 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
    - WBS table: task, history id, category, O/M/P, PERT mean (from
      `simulate`), rationale. (`/estimate:record` reads ids and PERT means
      back from this table — keep the columns.)
+   - Legend: one line defining P50 ("as likely over as under; use for internal
+     planning") and P80 ("commitment-grade; use for external quotes").
    - Traditional totals: P50 and P80 in hours AND person-days (8 h/day unless
      `.estimate/config.json` sets `hours_per_day`).
    - AI-assisted totals: P50/P80, with each factor's source (learned/default).
