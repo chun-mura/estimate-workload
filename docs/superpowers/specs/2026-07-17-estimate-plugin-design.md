@@ -21,13 +21,14 @@ Decided constraints:
 estimate-workload/                  (repo root = plugin root)
 ├── .claude-plugin/
 │   └── plugin.json                 # name: "estimate", semver version
-├── commands/
-│   ├── new.md                      # /estimate:new — run an estimation
-│   └── record.md                   # /estimate:record — record actuals afterward
 ├── agents/
 │   ├── spec-analyzer.md            # requirements/spec → structured change units
 │   └── code-analyzer.md            # read-only codebase impact/complexity analysis
 ├── skills/
+│   ├── new/
+│   │   └── SKILL.md                # /estimate:new — run an estimation (user-invoked)
+│   ├── record/
+│   │   └── SKILL.md                # /estimate:record — record actuals afterward (user-invoked)
 │   └── estimation-methodology/
 │       ├── SKILL.md                # core method: WBS rules, 3-point guidance, reference-class procedure
 │       └── references/             # worked examples, AI-assistance factor table, category taxonomy
@@ -78,7 +79,7 @@ Each agent's definition file specifies its output as a fenced JSON block:
 - `spec-analyzer` → `{change_units: [{name, description, dependencies[], acceptance_criteria[], uncertainty_notes[]}], out_of_scope[], open_questions[]}`
 - `code-analyzer` → `{affected_areas: [{path, change_type, complexity: low|mid|high, test_coverage: none|partial|good, notes}], integration_points[], repo_signals: {size, language, test_setup}}`
 
-`new.md`'s merge step consumes exactly these schemas. On overlap (spec `dependencies`
+The `new` skill's merge step consumes exactly these schemas. On overlap (spec `dependencies`
 vs code `integration_points`), the spec view defines WHAT changes; the code view
 defines WHERE and HOW HARD — code-analyzer output takes precedence for difficulty.
 
