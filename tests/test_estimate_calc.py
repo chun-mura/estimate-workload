@@ -89,5 +89,95 @@ class TestSimulate(unittest.TestCase):
             )
 
 
+class HistoryBase(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.dir.name, ".estimate", "history.jsonl")
+        self.addCleanup(self.dir.cleanup)
+
+    def append(self, slug="feat", tasks=None):
+        tasks = tasks or [
+            {"task": "Add endpoint", "category": "backend-api", "tags": ["auth"],
+             "o": 4, "m": 8, "p": 16},
+        ]
+        return ec.cmd_append_history(
+            {"history_path": self.path, "slug": slug, "tasks": tasks}
+        )
+
+    def raw_lines(self):
+        with open(self.path, encoding="utf-8") as fh:
+            return [l for l in fh.read().splitlines() if l.strip()]
+
+
+class TestAppendHistory(HistoryBase):
+    def test_appends_stamped_records(self):
+        out = self.append()
+        self.assertEqual(out["appended"], 1)
+        rec = json.loads(self.raw_lines()[0])
+        self.assertEqual(rec["schema_version"], 1)
+        self.assertEqual(rec["run_id"], out["run_id"])
+        self.assertEqual(rec["id"], out["run_id"] + "-01")
+        self.assertEqual(rec["status"], "estimated")
+        self.assertIsNone(rec["actual"])
+        self.assertIsNone(rec["ai_assisted"])
+        self.assertEqual(rec["pert"], 8.67)
+
+    def test_same_second_reruns_get_distinct_run_ids(self):
+        a = self.append()
+        b = self.append()
+        self.assertNotEqual(a["run_id"], b["run_id"])
+        ids = [json.loads(l)["id"] for l in self.raw_lines()]
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_rejects_unknown_category(self):
+        with self.assertRaises(ec.CalcError):
+            self.append(tasks=[{"task": "x", "category": "nope", "tags": [],
+                                "o": 1, "m": 2, "p": 3}])
+
+    def test_rejects_bad_three_point(self):
+        with self.assertRaises(ec.CalcError):
+            self.append(tasks=[{"task": "x", "category": "docs", "tags": [],
+                                "o": 5, "m": 2, "p": 3}])
+
+
+class TestReadHistory(HistoryBase):
+    def test_missing_file_is_empty_not_error(self):
+        records, warnings = ec.read_history(self.path)
+        self.assertEqual(records, [])
+        self.assertEqual(warnings, [])
+
+    def test_distinguishes_parse_and_schema_warnings(self):
+        self.append()
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        with open(self.path, "a", encoding="utf-8") as fh:
+            fh.write("{not json\n")
+            fh.write(json.dumps({"schema_version": 1, "id": "x"}) + "\n")
+        records, warnings = ec.read_history(self.path)
+        self.assertEqual(len(records), 1)
+        kinds = sorted(w["kind"] for w in warnings)
+        self.assertEqual(kinds, ["parse_error", "schema_violation"])
+
+    def test_future_schema_version_skipped_with_warning(self):
+        self.append()
+        rec = json.loads(self.raw_lines()[0])
+        rec["schema_version"] = 999
+        with open(self.path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec) + "\n")
+        records, warnings = ec.read_history(self.path)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(warnings[0]["kind"], "schema_violation")
+
+    def test_unknown_extra_fields_tolerated(self):
+        self.append()
+        rec = json.loads(self.raw_lines()[0])
+        rec["id"] = rec["id"] + "-extra"
+        rec["future_field"] = {"x": 1}
+        with open(self.path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec) + "\n")
+        records, warnings = ec.read_history(self.path)
+        self.assertEqual(len(records), 2)
+        self.assertEqual(warnings, [])
+
+
 if __name__ == "__main__":
     unittest.main()

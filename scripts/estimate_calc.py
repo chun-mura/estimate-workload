@@ -17,6 +17,7 @@ import os
 import random
 import statistics
 import sys
+from datetime import datetime
 
 SCHEMA_VERSION = 1
 KNOWN_SCHEMA_VERSIONS = {1}
@@ -101,6 +102,141 @@ def cmd_simulate(payload):
     }
 
 
+def schema_error(rec):
+    if not isinstance(rec, dict):
+        return "record is not an object"
+    sv = rec.get("schema_version")
+    if sv not in KNOWN_SCHEMA_VERSIONS:
+        return f"unknown schema_version: {sv!r}"
+    for key in ("run_id", "id", "date", "task"):
+        if not isinstance(rec.get(key), str) or not rec[key]:
+            return f"'{key}' must be a non-empty string"
+    if rec.get("category") not in CATEGORIES:
+        return f"unknown category: {rec.get('category')!r}"
+    tags = rec.get("tags")
+    if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+        return "'tags' must be a list of strings"
+    try:
+        validate_three_point(rec, "record")
+    except CalcError as exc:
+        return str(exc)
+    if not _is_number(rec.get("pert")):
+        return "'pert' must be a number"
+    actual = rec.get("actual")
+    if actual is not None and (not _is_number(actual) or actual <= 0):
+        return "'actual' must be null or a positive number"
+    ai = rec.get("ai_assisted")
+    if ai is not None and not isinstance(ai, bool):
+        return "'ai_assisted' must be null or a boolean"
+    if rec.get("status") not in ("estimated", "done"):
+        return f"unknown status: {rec.get('status')!r}"
+    return None
+
+
+def read_history(path):
+    """Return (valid_records, warnings); missing file means no history yet."""
+    records, warnings = [], []
+    if not os.path.exists(path):
+        return records, warnings
+    with open(path, encoding="utf-8") as fh:
+        for lineno, line in enumerate(fh, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError as exc:
+                warnings.append(
+                    {"line": lineno, "kind": "parse_error", "detail": str(exc)}
+                )
+                continue
+            err = schema_error(rec)
+            if err:
+                warnings.append(
+                    {"line": lineno, "kind": "schema_violation", "detail": err}
+                )
+                continue
+            records.append(rec)
+    return records, warnings
+
+
+def _existing_run_ids(path):
+    run_ids = set()
+    if not os.path.exists(path):
+        return run_ids
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(rec, dict) and isinstance(rec.get("run_id"), str):
+                run_ids.add(rec["run_id"])
+    return run_ids
+
+
+def cmd_append_history(payload):
+    path = payload.get("history_path")
+    if not isinstance(path, str) or not path:
+        raise CalcError("append-history: 'history_path' is required")
+    slug = payload.get("slug")
+    if not isinstance(slug, str) or not slug or not all(
+        c.isalnum() or c == "-" for c in slug.lower()
+    ):
+        raise CalcError("append-history: 'slug' must be alphanumeric/hyphens")
+    tasks = payload.get("tasks")
+    if not isinstance(tasks, list) or not tasks:
+        raise CalcError("append-history: 'tasks' must be a non-empty list")
+    for i, t in enumerate(tasks):
+        label = f"tasks[{i}]"
+        if not isinstance(t.get("task"), str) or not t["task"]:
+            raise CalcError(f"{label}: 'task' must be a non-empty string")
+        if t.get("category") not in CATEGORIES:
+            raise CalcError(
+                f"{label}: category {t.get('category')!r} not in {sorted(CATEGORIES)}"
+            )
+        tags = t.get("tags", [])
+        if not isinstance(tags, list) or not all(isinstance(x, str) for x in tags):
+            raise CalcError(f"{label}: 'tags' must be a list of strings")
+        validate_three_point(t, label)
+
+    now = datetime.now()
+    base = now.strftime("%Y%m%dT%H%M%S") + "-" + slug.lower()
+    existing = _existing_run_ids(path)
+    run_id, n = base, 2
+    while run_id in existing:
+        run_id = f"{base}-{n}"
+        n += 1
+
+    lines = []
+    for i, t in enumerate(tasks, 1):
+        rec = {
+            "schema_version": SCHEMA_VERSION,
+            "run_id": run_id,
+            "id": f"{run_id}-{i:02d}",
+            "date": now.strftime("%Y-%m-%d"),
+            "task": t["task"],
+            "category": t["category"],
+            "tags": t.get("tags", []),
+            "o": t["o"],
+            "m": t["m"],
+            "p": t["p"],
+            "pert": pert_mean(t["o"], t["m"], t["p"]),
+            "actual": None,
+            "ai_assisted": None,
+            "status": "estimated",
+        }
+        lines.append(json.dumps(rec, ensure_ascii=False))
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    data = ("\n".join(lines) + "\n").encode("utf-8")
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    try:
+        os.write(fd, data)
+    finally:
+        os.close(fd)
+    return {"run_id": run_id, "appended": len(lines)}
+
+
 def _load_payload(spec):
     if spec == "-":
         return json.load(sys.stdin)
@@ -110,6 +246,7 @@ def _load_payload(spec):
 
 PAYLOAD_COMMANDS = {
     "simulate": cmd_simulate,
+    "append-history": cmd_append_history,
 }
 
 
