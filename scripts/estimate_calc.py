@@ -233,9 +233,27 @@ def cmd_run_summary(payload):
     if any(separator in run_id for separator in (os.sep, os.altsep) if separator):
         raise CalcError("run-summary: 'run_id' must not contain a path separator")
     history_path = _required_string(payload, "history_path", "run-summary")
-    output_dir = payload.get("output_dir", ".estimate/runs")
-    if not isinstance(output_dir, str) or not output_dir:
+    output_dir = payload.get("output_dir")
+    if output_dir is not None and (not isinstance(output_dir, str) or not output_dir):
         raise CalcError("run-summary: 'output_dir' must be a non-empty string")
+    allowed_output_dir = os.path.realpath(os.path.join(
+        os.path.dirname(os.path.abspath(history_path)), "runs"
+    ))
+    if output_dir is None:
+        requested_output_dir = allowed_output_dir
+    else:
+        project_dir = os.path.dirname(os.path.dirname(
+            os.path.abspath(history_path)
+        ))
+        requested_output_dir = os.path.realpath(os.path.abspath(
+            output_dir if os.path.isabs(output_dir) else os.path.join(
+                project_dir, output_dir
+            )
+        ))
+    if requested_output_dir != allowed_output_dir:
+        raise CalcError(
+            "run-summary: 'output_dir' must be the history project's .estimate/runs"
+        )
     traditional = _validated_totals(payload, "traditional")
     ai_assisted = _validated_totals(payload, "ai_assisted")
     boundaries = _merged_size_boundaries(payload)
@@ -270,10 +288,11 @@ def cmd_run_summary(payload):
         ],
     }
 
-    os.makedirs(output_dir, exist_ok=True)
-    absolute_dir = os.path.abspath(output_dir)
-    output_path = os.path.join(absolute_dir, f"{run_id}.json")
-    fd, tmp = tempfile.mkstemp(dir=absolute_dir, prefix=".run-", suffix=".tmp")
+    os.makedirs(allowed_output_dir, exist_ok=True)
+    output_path = os.path.join(allowed_output_dir, f"{run_id}.json")
+    fd, tmp = tempfile.mkstemp(
+        dir=allowed_output_dir, prefix=".run-", suffix=".tmp"
+    )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(document, fh, ensure_ascii=False, indent=2)

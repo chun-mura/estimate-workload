@@ -315,17 +315,30 @@ class TestRunSummary(HistoryBase):
         })
 
     def test_creates_missing_output_directory(self):
-        nested = os.path.join(self.dir.name, "missing", "runs")
-        ec.cmd_run_summary(self.payload(output_dir=nested))
+        self.assertFalse(os.path.exists(self.output_dir))
+        ec.cmd_run_summary(self.payload())
         self.assertTrue(os.path.isfile(
-            os.path.join(nested, self.appended["run_id"] + ".json")
+            os.path.join(self.output_dir, self.appended["run_id"] + ".json")
         ))
+
+    def test_rejects_output_directory_outside_history_project_runs_directory(self):
+        external_dir = os.path.join(self.dir.name, "external", "runs")
+        with self.assertRaisesRegex(ec.CalcError, r"output_dir.*\.estimate/runs"):
+            ec.cmd_run_summary(self.payload(output_dir=external_dir))
+        self.assertFalse(os.path.exists(external_dir))
+
+    def test_rejects_output_directory_path_traversal(self):
+        escaped_dir = os.path.join(self.output_dir, "..", "outside")
+        with self.assertRaisesRegex(ec.CalcError, r"output_dir.*\.estimate/runs"):
+            ec.cmd_run_summary(self.payload(output_dir=escaped_dir))
+        self.assertFalse(os.path.exists(os.path.join(
+            self.dir.name, ".estimate", "outside"
+        )))
 
     def test_uses_default_output_directory_when_omitted(self):
         payload = self.payload()
         del payload["output_dir"]
-        with contextlib.chdir(self.dir.name):
-            ec.cmd_run_summary(payload)
+        ec.cmd_run_summary(payload)
         self.assertTrue(os.path.isfile(os.path.join(
             self.dir.name, ".estimate", "runs", self.appended["run_id"] + ".json"
         )))
