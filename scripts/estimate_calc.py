@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """All statistics and history-file I/O for the estimate plugin.
 
-Skills and agents must never do arithmetic or edit .estimate/history.jsonl
-directly; this script is the single choke point for math, schema
-validation, ID generation, locking, and version handling.
+Skills and agents must never do arithmetic or edit `.estimate/history.jsonl`
+or `.estimate/runs/` directly; this script is the single choke point for math,
+schema validation, ID generation, locking, version handling, and run-summary
+file output.
 
 Contract: `estimate_calc.py <subcommand> --input <file|->` reads a JSON
 payload, writes a JSON result to stdout, and on error writes
@@ -26,6 +27,8 @@ KNOWN_SCHEMA_VERSIONS = {1}
 CATEGORIES = {"backend-api", "frontend-ui", "db-migration", "infra", "test-only", "docs"}
 DEFAULT_TRIALS = 10_000
 DEFAULT_CORRELATION = 0.3
+RUN_SCHEMA_VERSION = 1
+DEFAULT_SIZE_BOUNDARIES = {"s_max_hours": 4, "m_max_hours": 16}
 
 
 class CalcError(Exception):
@@ -181,6 +184,106 @@ def read_history(path):
                 continue
             records.append(rec)
     return records, warnings
+
+
+def _required_string(payload, key, command):
+    value = payload.get(key)
+    if not isinstance(value, str) or not value:
+        raise CalcError(f"{command}: '{key}' must be a non-empty string")
+    return value
+
+
+def _validated_totals(payload, key):
+    totals = payload.get(key)
+    if not isinstance(totals, dict):
+        raise CalcError(f"run-summary: '{key}' must be an object")
+    result = {}
+    for metric in ("mean", "p50", "p80"):
+        value = totals.get(metric)
+        if not _is_number(value) or value < 0:
+            raise CalcError(
+                f"run-summary: '{key}.{metric}' must be a non-negative finite number"
+            )
+        result[metric] = value
+    return result
+
+
+def _merged_size_boundaries(payload):
+    overrides = payload.get("boundaries", {})
+    if not isinstance(overrides, dict):
+        raise CalcError("run-summary: 'boundaries' must be an object")
+    boundaries = {
+        key: overrides.get(key, default)
+        for key, default in DEFAULT_SIZE_BOUNDARIES.items()
+    }
+    for key, value in boundaries.items():
+        if not _is_number(value) or value <= 0:
+            raise CalcError(
+                f"run-summary: 'boundaries.{key}' must be a positive finite number"
+            )
+    if boundaries["s_max_hours"] >= boundaries["m_max_hours"]:
+        raise CalcError(
+            "run-summary: 's_max_hours' must be less than 'm_max_hours'"
+        )
+    return boundaries
+
+
+def cmd_run_summary(payload):
+    run_id = _required_string(payload, "run_id", "run-summary")
+    if any(separator in run_id for separator in (os.sep, os.altsep) if separator):
+        raise CalcError("run-summary: 'run_id' must not contain a path separator")
+    history_path = _required_string(payload, "history_path", "run-summary")
+    output_dir = payload.get("output_dir", ".estimate/runs")
+    if not isinstance(output_dir, str) or not output_dir:
+        raise CalcError("run-summary: 'output_dir' must be a non-empty string")
+    traditional = _validated_totals(payload, "traditional")
+    ai_assisted = _validated_totals(payload, "ai_assisted")
+    boundaries = _merged_size_boundaries(payload)
+
+    records, _warnings = read_history(history_path)
+    run_records = [record for record in records if record["run_id"] == run_id]
+    if not run_records:
+        raise CalcError(f"run-summary: no history records for run_id {run_id!r}")
+
+    p80 = ai_assisted["p80"]
+    if p80 <= boundaries["s_max_hours"]:
+        label = "S"
+    elif p80 <= boundaries["m_max_hours"]:
+        label = "M"
+    else:
+        label = "L"
+
+    document = {
+        "schema_version": RUN_SCHEMA_VERSION,
+        "run_id": run_id,
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "size": {
+            "label": label,
+            "basis": "ai_assisted_p80",
+            "boundaries": boundaries,
+        },
+        "traditional": traditional,
+        "ai_assisted": ai_assisted,
+        "tasks": [
+            {key: record[key] for key in ("id", "task", "category", "pert")}
+            for record in run_records
+        ],
+    }
+
+    os.makedirs(output_dir, exist_ok=True)
+    absolute_dir = os.path.abspath(output_dir)
+    output_path = os.path.join(absolute_dir, f"{run_id}.json")
+    fd, tmp = tempfile.mkstemp(dir=absolute_dir, prefix=".run-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(document, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        os.replace(tmp, output_path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+    return document
 
 
 def _existing_run_ids(path):
@@ -472,6 +575,7 @@ PAYLOAD_COMMANDS = {
     "reference-class": cmd_reference_class,
     "calibration": cmd_calibration,
     "distribute": cmd_distribute,
+    "run-summary": cmd_run_summary,
 }
 
 

@@ -9,7 +9,8 @@ First read `${CLAUDE_PLUGIN_ROOT}/skills/estimation-methodology/SKILL.md` and it
 `references/` files, and follow them exactly. CALC below means
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/estimate_calc.py"`. The history file is
 `.estimate/history.jsonl` in the current project. If any CALC call fails, stop
-and report its stderr — no freehand fallback.
+and report its stderr — no freehand fallback — except for the recoverable
+`run-summary` failure described in step 8.3.
 
 Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
 
@@ -48,10 +49,21 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
    from the methodology references. The script does the scaling; never
    multiply hours yourself. Use the returned `correlation` from both calls
    and stop with a CALC error if the returned values differ.
-8. **Persist — history FIRST, report second.**
+8. **Persist — history FIRST, summary second, report third.**
    1. CALC `append-history` with slug (kebab-case from the work's name) and
-      the final tasks. Keep the returned `run_id` and ids.
-   2. Write the report to `docs/estimates/YYYY-MM-DD-<slug>.md`. If writing
+      the final tasks. Keep the returned `run_id`; task ids are
+      `<run_id>-01`, `<run_id>-02`, ... in input order.
+   2. Build a CALC `run-summary` payload with the `run_id`,
+      `history_path: ".estimate/history.jsonl"`, and the `traditional` and
+      `ai_assisted` `mean`/`p50`/`p80` totals returned by the two `simulate`
+      calls. If `.estimate/config.json` contains `size_boundaries`, pass it as
+      `boundaries`; otherwise omit `boundaries`. Do not pass tasks or compute a
+      size label. Keep the summary path
+      `.estimate/runs/<run_id>.json` when the call succeeds.
+   3. `run-summary` is the only recoverable CALC failure: if it fails after
+      `append-history` succeeded, report its stderr, omit the machine-readable
+      summary footer line, and continue. History is already authoritative.
+   4. Write the report to `docs/estimates/YYYY-MM-DD-<slug>.md`. If writing
       fails, print the full report in chat instead — history is already saved.
 9. **Report.** In the conversation language. Must contain:
    - WBS table: task, history id, category, O/M/P, PERT mean (from
@@ -66,6 +78,8 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
    - AI-assisted totals: P50/P80, with each factor's source (learned/default).
    - Assumptions, Risks (including any agent failure), Out of scope.
    - Calibration note: which corrections applied, which were skipped.
+   - Footer, only when `run-summary` succeeded: "Machine-readable summary:
+     `.estimate/runs/<run_id>.json`".
    - Footer: "Record actuals when done: `/estimate:record <run_id>`".
    The history file is authoritative; the report is a point-in-time snapshot
    and is never edited afterward.

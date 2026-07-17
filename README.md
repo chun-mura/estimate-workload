@@ -51,16 +51,23 @@ claude --plugin-dir .
 
 ## Data & privacy
 
-Everything the plugin learns lives in one file: `.estimate/history.jsonl`, in
-your project's own repo. Nothing is sent anywhere else. This file is plain
-JSON Lines — one estimated or completed task record per line — and is only
-ever written through the plugin's own script (`append-history`,
-`update-actual`); it is never hand-edited.
+The plugin stores project-local data under `.estimate/`. Task estimates and
+actuals live in `.estimate/history.jsonl`; each estimate also gets a
+machine-readable point-in-time snapshot at `.estimate/runs/<run_id>.json`.
+Nothing is sent anywhere else.
 
-Commit `.estimate/history.jsonl` to your repo if you want the whole team's
-estimates and actuals to share the same calibration data. Anyone on the team
-who then runs `/estimate:new` benefits from anchors and corrections built from
-everyone's recorded work, not just their own.
+`history.jsonl` is one estimated or completed task record per line and is only
+written through `append-history` and `update-actual`. Run-summary JSON files
+contain the run id, generated time, S/M/L classification and boundaries,
+traditional and AI-assisted totals, and the persisted task ids/categories/PERT
+means. They are written atomically by `run-summary` and are not regenerated
+when `/estimate:record` later stores actuals.
+
+Choose the repository policy that fits your project. Commit both
+`.estimate/history.jsonl` and `.estimate/runs/` to share calibration data and
+stable machine-readable estimates with the team, or ignore both when estimate
+data should remain local. Team members benefit from shared anchors and
+corrections only when `history.jsonl` is shared.
 
 ## The two effort views
 
@@ -93,7 +100,9 @@ Monte Carlo simulation over the full O/M/P ranges.
 
 ## Versioning
 
-The plugin follows semver (`.claude-plugin/plugin.json`). History records
-carry a `schema_version`; readers are written to tolerate unknown newer
-versions and older records forward, so upgrading the plugin does not require
-migrating or discarding existing `.estimate/history.jsonl` data.
+The plugin follows semver (`.claude-plugin/plugin.json`). History records carry
+a `schema_version`; run summaries carry an independent `schema_version` so a
+breaking change to one format cannot silently change the other. Readers of
+history tolerate unknown newer versions and older records forward, so upgrading
+the plugin does not require discarding existing `.estimate/history.jsonl` data.
+Consumers of run summaries must check their schema version before parsing.

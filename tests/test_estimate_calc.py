@@ -6,6 +6,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "scripts"))
 import estimate_calc as ec
@@ -240,6 +241,155 @@ class TestReadHistory(HistoryBase):
         records, warnings = ec.read_history(self.path)
         self.assertEqual(len(records), 2)
         self.assertEqual(warnings, [])
+
+
+class TestRunSummary(HistoryBase):
+    def setUp(self):
+        super().setUp()
+        self.output_dir = os.path.join(self.dir.name, ".estimate", "runs")
+        self.appended = self.append(tasks=[
+            {"task": "Add endpoint", "category": "backend-api", "tags": ["auth"],
+             "o": 4, "m": 8, "p": 16},
+            {"task": "Write guide", "category": "docs", "tags": ["readme"],
+             "o": 1, "m": 2, "p": 3},
+        ])
+
+    def payload(self, **over):
+        base = {
+            "run_id": self.appended["run_id"],
+            "history_path": self.path,
+            "output_dir": self.output_dir,
+            "traditional": {"mean": 20.5, "p50": 20.1, "p80": 24.3},
+            "ai_assisted": {"mean": 10.0, "p50": 9.8, "p80": 12.0},
+        }
+        base.update(over)
+        return base
+
+    def test_writes_default_document_and_reads_tasks_from_history(self):
+        out = ec.cmd_run_summary(self.payload())
+        path = os.path.join(self.output_dir, self.appended["run_id"] + ".json")
+        with open(path, encoding="utf-8") as fh:
+            persisted = json.load(fh)
+        self.assertEqual(persisted, out)
+        self.assertEqual(out["schema_version"], 1)
+        self.assertEqual(out["run_id"], self.appended["run_id"])
+        datetime.fromisoformat(out["generated_at"])
+        self.assertEqual(out["size"], {
+            "label": "M",
+            "basis": "ai_assisted_p80",
+            "boundaries": {"s_max_hours": 4, "m_max_hours": 16},
+        })
+        self.assertEqual(out["traditional"], self.payload()["traditional"])
+        self.assertEqual(out["ai_assisted"], self.payload()["ai_assisted"])
+        self.assertEqual(out["tasks"], [
+            {"id": self.appended["run_id"] + "-01", "task": "Add endpoint",
+             "category": "backend-api", "pert": 8.67},
+            {"id": self.appended["run_id"] + "-02", "task": "Write guide",
+             "category": "docs", "pert": 2.0},
+        ])
+
+    def test_default_label_boundaries_are_inclusive(self):
+        for p80, expected in ((4.0, "S"), (4.1, "M"), (16.0, "M"), (16.1, "L")):
+            with self.subTest(p80=p80):
+                ai = {"mean": p80, "p50": p80, "p80": p80}
+                out = ec.cmd_run_summary(self.payload(ai_assisted=ai))
+                self.assertEqual(out["size"]["label"], expected)
+
+    def test_custom_and_partial_boundaries(self):
+        ai = {"mean": 5, "p50": 5, "p80": 5}
+        custom = ec.cmd_run_summary(self.payload(
+            ai_assisted=ai,
+            boundaries={"s_max_hours": 6, "m_max_hours": 20},
+        ))
+        self.assertEqual(custom["size"]["label"], "S")
+        self.assertEqual(custom["size"]["boundaries"], {
+            "s_max_hours": 6, "m_max_hours": 20,
+        })
+        partial = ec.cmd_run_summary(self.payload(
+            ai_assisted=ai,
+            boundaries={"s_max_hours": 3},
+        ))
+        self.assertEqual(partial["size"]["label"], "M")
+        self.assertEqual(partial["size"]["boundaries"], {
+            "s_max_hours": 3, "m_max_hours": 16,
+        })
+
+    def test_creates_missing_output_directory(self):
+        nested = os.path.join(self.dir.name, "missing", "runs")
+        ec.cmd_run_summary(self.payload(output_dir=nested))
+        self.assertTrue(os.path.isfile(
+            os.path.join(nested, self.appended["run_id"] + ".json")
+        ))
+
+    def test_uses_default_output_directory_when_omitted(self):
+        payload = self.payload()
+        del payload["output_dir"]
+        with contextlib.chdir(self.dir.name):
+            ec.cmd_run_summary(payload)
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.dir.name, ".estimate", "runs", self.appended["run_id"] + ".json"
+        )))
+
+    def test_rejects_missing_or_invalid_totals(self):
+        bad_payloads = [
+            self.payload(traditional={"mean": 1, "p50": 1}),
+            self.payload(ai_assisted={"mean": 1, "p50": 1, "p80": -1}),
+            self.payload(ai_assisted={"mean": 1, "p50": 1, "p80": True}),
+        ]
+        for payload in bad_payloads:
+            with self.subTest(payload=payload), self.assertRaises(ec.CalcError):
+                ec.cmd_run_summary(payload)
+
+    def test_rejects_invalid_boundaries(self):
+        for boundaries in (
+            {"s_max_hours": 16, "m_max_hours": 16},
+            {"s_max_hours": 0},
+            {"m_max_hours": float("inf")},
+        ):
+            with self.subTest(boundaries=boundaries), self.assertRaises(ec.CalcError):
+                ec.cmd_run_summary(self.payload(boundaries=boundaries))
+
+    def test_rejects_unknown_run_id(self):
+        with self.assertRaisesRegex(ec.CalcError, "no history records"):
+            ec.cmd_run_summary(self.payload(run_id="unknown-run"))
+
+    def test_rejects_invalid_required_strings(self):
+        for override in (
+            {"run_id": ""},
+            {"history_path": None},
+            {"output_dir": ""},
+        ):
+            with self.subTest(override=override), self.assertRaises(ec.CalcError):
+                ec.cmd_run_summary(self.payload(**override))
+
+    def test_rejects_run_id_that_would_escape_output_directory(self):
+        record = json.loads(self.raw_lines()[0])
+        record["run_id"] = "../escape"
+        with open(self.path, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+        with self.assertRaisesRegex(ec.CalcError, "run_id.*path"):
+            ec.cmd_run_summary(self.payload(run_id="../escape"))
+        self.assertFalse(os.path.exists(
+            os.path.join(self.dir.name, ".estimate", "escape.json")
+        ))
+
+    def test_cli_echoes_the_persisted_document(self):
+        payload_path = os.path.join(self.dir.name, "payload.json")
+        with open(payload_path, "w", encoding="utf-8") as fh:
+            json.dump(self.payload(), fh)
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            rc = ec.main(["run-summary", "--input", payload_path])
+        self.assertEqual(rc, 0)
+        echoed = json.loads(stdout.getvalue())
+        with open(os.path.join(
+            self.output_dir, self.appended["run_id"] + ".json"
+        ), encoding="utf-8") as fh:
+            persisted = json.load(fh)
+        self.assertEqual(echoed, persisted)
+
+    def test_is_registered_as_payload_command(self):
+        self.assertIs(ec.PAYLOAD_COMMANDS["run-summary"], ec.cmd_run_summary)
 
 
 class TestUpdateActual(HistoryBase):
