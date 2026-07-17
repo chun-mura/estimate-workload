@@ -17,6 +17,8 @@ import os
 import random
 import statistics
 import sys
+import tempfile
+import time
 from datetime import datetime
 
 SCHEMA_VERSION = 1
@@ -237,6 +239,66 @@ def cmd_append_history(payload):
     return {"run_id": run_id, "appended": len(lines)}
 
 
+def _acquire_lock(path, timeout):
+    lock = path + ".lock"
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            return lock
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                raise CalcError(
+                    f"could not acquire {lock}; is another update running? "
+                    "Remove the file if it is stale."
+                )
+            time.sleep(0.1)
+
+
+def cmd_update_actual(history_path, task_id, actual, ai_assisted, lock_timeout=5.0):
+    if not _is_number(actual) or actual <= 0:
+        raise CalcError("update-actual: --actual must be a positive number of hours")
+    if not os.path.exists(history_path):
+        raise CalcError(f"update-actual: no history file at {history_path}")
+    lock = _acquire_lock(history_path, lock_timeout)
+    try:
+        with open(history_path, encoding="utf-8") as fh:
+            raw = fh.readlines()
+        out_lines, updated = [], None
+        for line in raw:
+            rec = None
+            stripped = line.strip()
+            if stripped:
+                try:
+                    rec = json.loads(stripped)
+                except json.JSONDecodeError:
+                    rec = None
+            if isinstance(rec, dict) and rec.get("id") == task_id:
+                rec["actual"] = actual
+                rec["ai_assisted"] = bool(ai_assisted)
+                rec["status"] = "done"
+                out_lines.append(json.dumps(rec, ensure_ascii=False) + "\n")
+                updated = rec
+            else:
+                out_lines.append(line)
+        if updated is None:
+            raise CalcError(f"update-actual: no record with id {task_id!r}")
+        dir_ = os.path.dirname(os.path.abspath(history_path))
+        fd, tmp = tempfile.mkstemp(dir=dir_, prefix=".history-", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.writelines(out_lines)
+            os.replace(tmp, history_path)
+        except BaseException:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            raise
+        return {"updated": updated}
+    finally:
+        os.remove(lock)
+
+
 def _load_payload(spec):
     if spec == "-":
         return json.load(sys.stdin)
@@ -256,9 +318,19 @@ def main(argv=None):
     for name in PAYLOAD_COMMANDS:
         p = sub.add_parser(name)
         p.add_argument("--input", default="-", help="JSON payload file, or - for stdin")
+    p = sub.add_parser("update-actual")
+    p.add_argument("--history-path", required=True)
+    p.add_argument("--id", required=True)
+    p.add_argument("--actual", type=float, required=True)
+    p.add_argument("--ai-assisted", choices=["true", "false"], required=True)
     args = parser.parse_args(argv)
     try:
-        result = PAYLOAD_COMMANDS[args.cmd](_load_payload(args.input))
+        if args.cmd == "update-actual":
+            result = cmd_update_actual(
+                args.history_path, args.id, args.actual, args.ai_assisted == "true"
+            )
+        else:
+            result = PAYLOAD_COMMANDS[args.cmd](_load_payload(args.input))
     except CalcError as exc:
         json.dump({"error": str(exc)}, sys.stderr)
         sys.stderr.write("\n")

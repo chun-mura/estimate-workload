@@ -179,5 +179,48 @@ class TestReadHistory(HistoryBase):
         self.assertEqual(warnings, [])
 
 
+class TestUpdateActual(HistoryBase):
+    def test_updates_matching_record(self):
+        out = self.append()
+        task_id = out["run_id"] + "-01"
+        res = ec.cmd_update_actual(self.path, task_id, 6.5, True)
+        self.assertEqual(res["updated"]["actual"], 6.5)
+        self.assertIs(res["updated"]["ai_assisted"], True)
+        self.assertEqual(res["updated"]["status"], "done")
+        rec = json.loads(self.raw_lines()[0])
+        self.assertEqual(rec["actual"], 6.5)
+
+    def test_rejects_nonpositive_actual(self):
+        out = self.append()
+        task_id = out["run_id"] + "-01"
+        for bad in (0, -3):
+            with self.assertRaises(ec.CalcError):
+                ec.cmd_update_actual(self.path, task_id, bad, False)
+
+    def test_unknown_id_errors(self):
+        self.append()
+        with self.assertRaises(ec.CalcError):
+            ec.cmd_update_actual(self.path, "nope-01", 5, False)
+
+    def test_preserves_corrupt_lines_verbatim(self):
+        out = self.append()
+        with open(self.path, "a", encoding="utf-8") as fh:
+            fh.write("{corrupt line\n")
+        ec.cmd_update_actual(self.path, out["run_id"] + "-01", 5, False)
+        self.assertIn("{corrupt line", self.raw_lines())
+
+    def test_lock_contention_fails_fast(self):
+        out = self.append()
+        lock = self.path + ".lock"
+        open(lock, "w").close()
+        try:
+            with self.assertRaises(ec.CalcError):
+                ec.cmd_update_actual(
+                    self.path, out["run_id"] + "-01", 5, False, lock_timeout=0.2
+                )
+        finally:
+            os.remove(lock)
+
+
 if __name__ == "__main__":
     unittest.main()
