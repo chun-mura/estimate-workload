@@ -26,6 +26,17 @@ class TestPercentile(unittest.TestCase):
             ec.percentile([], 50)
 
 
+class TestTriangularInvCdf(unittest.TestCase):
+    def test_endpoints_and_mode(self):
+        self.assertEqual(ec.triangular_inv_cdf(0.0, 2, 5, 10), 2)
+        self.assertEqual(ec.triangular_inv_cdf(1.0, 2, 5, 10), 10)
+        fc = (5 - 2) / (10 - 2)
+        self.assertAlmostEqual(ec.triangular_inv_cdf(fc, 2, 5, 10), 5)
+
+    def test_degenerate_distribution_is_constant(self):
+        self.assertEqual(ec.triangular_inv_cdf(0.37, 5, 5, 5), 5)
+
+
 class TestSimulate(unittest.TestCase):
     def payload(self, **over):
         base = {
@@ -89,6 +100,38 @@ class TestSimulate(unittest.TestCase):
             ec.cmd_simulate(
                 {"tasks": [{"name": "x", "o": 4, "m": 8, "p": 16, "factor": 0}]}
             )
+
+    def test_default_and_explicit_correlation_are_reported(self):
+        self.assertEqual(ec.cmd_simulate(self.payload())["correlation"], 0.3)
+        self.assertEqual(ec.cmd_simulate(self.payload(correlation=0.7))["correlation"], 0.7)
+
+    def test_rejects_invalid_correlation(self):
+        for value in (-0.01, 1.01, float("nan"), float("inf"), True, "0.3"):
+            with self.subTest(value=value), self.assertRaises(ec.CalcError):
+                ec.cmd_simulate(self.payload(correlation=value))
+
+    def test_mean_is_approximately_invariant_to_correlation(self):
+        independent = ec.cmd_simulate(self.payload(trials=50_000, correlation=0))["total"]
+        correlated = ec.cmd_simulate(self.payload(trials=50_000, correlation=0.9))["total"]
+        self.assertAlmostEqual(independent["mean"], correlated["mean"], delta=0.12)
+
+    def test_high_correlation_raises_multi_task_p80(self):
+        independent = ec.cmd_simulate(self.payload(trials=50_000, correlation=0))["total"]
+        correlated = ec.cmd_simulate(self.payload(trials=50_000, correlation=0.9))["total"]
+        self.assertGreater(correlated["p80"], independent["p80"])
+
+    def test_single_task_marginal_is_approximately_invariant(self):
+        base = {"tasks": [{"name": "x", "o": 2, "m": 5, "p": 12}], "trials": 50_000, "seed": 42}
+        independent = ec.cmd_simulate({**base, "correlation": 0})["total"]
+        correlated = ec.cmd_simulate({**base, "correlation": 0.9})["total"]
+        self.assertAlmostEqual(independent["mean"], correlated["mean"], delta=0.08)
+        self.assertAlmostEqual(independent["p80"], correlated["p80"], delta=0.08)
+
+    def test_degenerate_task_is_unaffected_by_correlation(self):
+        payload = {"tasks": [{"name": "x", "o": 5, "m": 5, "p": 5}], "trials": 20, "seed": 1}
+        independent = ec.cmd_simulate({**payload, "correlation": 0})["total"]
+        correlated = ec.cmd_simulate({**payload, "correlation": 1})["total"]
+        self.assertEqual(independent, correlated)
 
 
 class HistoryBase(unittest.TestCase):

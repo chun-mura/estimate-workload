@@ -25,6 +25,7 @@ SCHEMA_VERSION = 1
 KNOWN_SCHEMA_VERSIONS = {1}
 CATEGORIES = {"backend-api", "frontend-ui", "db-migration", "infra", "test-only", "docs"}
 DEFAULT_TRIALS = 10_000
+DEFAULT_CORRELATION = 0.3
 
 
 class CalcError(Exception):
@@ -61,6 +62,16 @@ def validate_three_point(task, label):
         raise CalcError(f"{label}: requires o <= m <= p")
 
 
+def triangular_inv_cdf(u, o, m, p):
+    """Inverse CDF of Triangular(o, m, p) for u in [0, 1]."""
+    if o == p:
+        return o
+    fc = (m - o) / (p - o)
+    if u < fc:
+        return o + math.sqrt(u * (p - o) * (m - o))
+    return p - math.sqrt((1 - u) * (p - o) * (p - m))
+
+
 def cmd_simulate(payload):
     tasks = payload.get("tasks")
     if not isinstance(tasks, list) or not tasks:
@@ -78,15 +89,24 @@ def cmd_simulate(payload):
     trials = payload.get("trials", DEFAULT_TRIALS)
     if not isinstance(trials, int) or isinstance(trials, bool) or trials < 1:
         raise CalcError("simulate: 'trials' must be a positive integer")
+    correlation = payload.get("correlation", DEFAULT_CORRELATION)
+    if not _is_number(correlation) or not 0 <= correlation <= 1:
+        raise CalcError("simulate: 'correlation' must be a finite number in [0, 1]")
+
     rng = random.Random(payload.get("seed"))
+    common_weight = math.sqrt(correlation)
+    individual_weight = math.sqrt(1 - correlation)
     totals = []
     for _ in range(trials):
+        common = rng.gauss(0, 1)
         total = 0.0
         for t in scaled:
             if t["o"] == t["p"]:
                 total += t["o"]
             else:
-                total += rng.triangular(t["o"], t["p"], t["m"])
+                z = common_weight * common + individual_weight * rng.gauss(0, 1)
+                u = 0.5 * (1 + math.erf(z / math.sqrt(2)))
+                total += triangular_inv_cdf(u, t["o"], t["m"], t["p"])
         totals.append(total)
     return {
         "tasks": [
@@ -101,6 +121,7 @@ def cmd_simulate(payload):
             "max": round(max(totals), 2),
         },
         "trials": trials,
+        "correlation": correlation,
     }
 
 

@@ -66,6 +66,15 @@ Call `simulate` with the final per-task O/M/P. Report the total as:
 - **P80** — commitment-grade; use for external quotes.
 Never present the sum of M values as "the estimate".
 
+## Task correlation
+
+Project tasks share common-cause delays such as specification churn and
+environment failures, so simulations use positive task correlation rather
+than assuming independence. CALC models this with a one-factor Gaussian
+copula: `rho = 0` is independent task risk and `rho = 1` is fully shared risk.
+The default is `rho = 0.3`; values around `0.2`–`0.5` are a practical range for
+common project risk. Every report states the resolved correlation assumption.
+
 ## Two effort views
 
 Report BOTH, clearly labeled:

@@ -39,12 +39,15 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
    task's `o`, `m`, and `p`. Where it returns corrected values
    (`corrected_o`/`corrected_m`/`corrected_p`), use them.
    Where skipped, note "uncorrected (insufficient data: N similar records)".
-7. **Aggregate.** Call CALC `simulate` with the final O/M/P values
-   (default trials). Then build the AI-assisted view: call CALC `simulate`
-   again with the same tasks plus a per-task `"factor"` — the category's
+7. **Aggregate.** Build the CALC `simulate` payload with the final O/M/P
+   values. If `.estimate/config.json` contains `correlation`, add that value
+   to the payload; otherwise omit it so CALC owns the `0.3` default. Then build
+   the AI-assisted view: call CALC `simulate` again with the same correlation
+   override behavior and tasks plus a per-task `"factor"` — the category's
    learned factor (from CALC `calibration`) when available, else the default
    from the methodology references. The script does the scaling; never
-   multiply hours yourself.
+   multiply hours yourself. Use the returned `correlation` from both calls
+   and stop with a CALC error if the returned values differ.
 8. **Persist — history FIRST, report second.**
    1. CALC `append-history` with slug (kebab-case from the work's name) and
       the final tasks. Keep the returned `run_id` and ids.
@@ -56,6 +59,8 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
      back from this table — keep the columns.)
    - Legend: one line defining P50 ("as likely over as under; use for internal
      planning") and P80 ("commitment-grade; use for external quotes").
+   - Method note: "tasks correlated at rho = X via common-cause factor",
+     using the correlation value returned by CALC `simulate`.
    - Traditional totals: P50 and P80 in hours AND person-days (8 h/day unless
      `.estimate/config.json` sets `hours_per_day`).
    - AI-assisted totals: P50/P80, with each factor's source (learned/default).
