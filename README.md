@@ -16,10 +16,9 @@ actuals attached.
 
 ## Install
 
-Once published to a marketplace:
-
 ```
-/plugin marketplace add <repo>
+/plugin marketplace add chun-mura/estimate-workload
+/plugin install estimate@estimate-workload
 ```
 
 For local development, run Claude Code with the plugin directory mounted
