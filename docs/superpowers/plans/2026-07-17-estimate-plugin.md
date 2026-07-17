@@ -67,7 +67,7 @@ estimate-workload/                  (repo root = plugin root)
   "description": "Scientifically-grounded effort estimation: WBS decomposition, 3-point estimates with Monte Carlo aggregation, and reference-class calibration that improves as you record actuals.",
   "version": "0.1.0",
   "author": {
-    "name": "Kohki Nakamura"
+    "name": "chun-mura"
   },
   "license": "MIT"
 }
