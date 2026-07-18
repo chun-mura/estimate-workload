@@ -47,7 +47,7 @@ claude --plugin-dir .
    /estimate:new --mode economy docs/spec.md docs/tasks.md
    ```
 
-   This reads the input, dispatches spec/code analysis, builds the WBS,
+   This reads the input, dispatches the analysis selected by the mode, builds the WBS,
    assigns and corrects 3-point ranges, runs the simulation, writes a report
    under `docs/estimates/`, and prints the `run_id` you'll need next. Every
    report follows one fixed structure
