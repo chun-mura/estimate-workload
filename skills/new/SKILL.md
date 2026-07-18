@@ -84,8 +84,10 @@ mode by default.
 5. **WBS.** Merge per the methodology: in `quality`, the spec view defines
    WHAT and the code view defines WHERE/HOW HARD (the code view wins on
    difficulty); in `economy`, use the spec view with the code-impact
-   assumptions from step 4. Produce leaf tasks (0.5–3 person-days) each with
-   category (fixed taxonomy) and tags. In `economy` mode, identify the
+   assumptions from step 4. Produce leaf tasks (0.5–3 person-days) with
+   concise Japanese verb-first task names, category (fixed taxonomy), and
+   tags. Technical identifiers such as API, framework, file, and schema names
+   may remain in English. In `economy` mode, identify the
    code-affecting leaf tasks now and attach the fixed code-impact assumption
    and risk to them for the step 8 report.
 6. **Anchored 3-point estimates.** Call CALC `reference-class` (tasks with

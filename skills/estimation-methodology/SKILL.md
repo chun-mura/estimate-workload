@@ -24,9 +24,12 @@ description: Estimation methodology reference for the estimate plugin — WBS de
 - Leaf tasks should land between roughly 0.5 and 3 person-days (4–24 hours) of
   traditional effort. Split anything larger — large tasks hide unknowns and
   break reference-class matching.
-- Every leaf task gets: a verb-first name, one `category` from
+- Every leaf task gets a concise Japanese name that starts with a verb (for
+  example, `認証フローを更新する`), one `category` from
   `references/category-taxonomy.md`, and 1–4 lowercase `tags` (technology or
   domain nouns, e.g. `auth`, `rest`, `react`) that future runs can match on.
+  Keep technical identifiers such as API, framework, file, and schema names
+  unchanged when they make the target clear.
 
 ## 3-point estimation guidance
 

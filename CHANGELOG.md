@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- Generate WBS task names in Japanese, beginning with a verb. Technical
+  identifiers such as API, framework, file, and schema names remain unchanged
+  where they clarify the target.
+
 ### Removed
 - Machine-readable run-summary JSON files, their size classification, and
   the `run-summary` calculator command. `.estimate/history.jsonl` is now the

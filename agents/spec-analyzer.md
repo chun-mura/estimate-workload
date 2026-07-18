@@ -17,7 +17,7 @@ Return EXACTLY ONE fenced JSON block, no prose after it:
 {
   "change_units": [
     {
-      "name": "short verb-first name",
+      "name": "簡潔な日本語の動詞始まりの名称",
       "description": "1-3 sentences of what changes and why",
       "dependencies": ["other change-unit names or external systems"],
       "acceptance_criteria": ["verifiable outcomes stated or implied"],
@@ -32,6 +32,9 @@ Return EXACTLY ONE fenced JSON block, no prose after it:
 Rules:
 - Every ambiguity goes into `uncertainty_notes` or `open_questions` — never
   resolve one silently.
+- Write every `change_units[].name` in Japanese, starting with a verb (for
+  example, `認証フローを更新する`). Keep technical identifiers such as API,
+  framework, file, and schema names unchanged when they make the target clear.
 - If a provided path cannot be read, list that in `open_questions` and continue
   with the rest.
 - Change units should be independently deliverable slices, not phases.

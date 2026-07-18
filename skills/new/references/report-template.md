@@ -48,7 +48,7 @@ A run-to-run difference in structure is a defect, not a style choice.
 
 | # | タスク | 履歴ID | カテゴリ | O (h) | M (h) | P (h) | 期待値 (h) | 根拠 |
 |---|---|---|---|---|---|---|---|---|
-| 1 | <verb-first task name> | `<run_id>-01` | <category> | <o> | <m> | <p> | <pert> | <complexity driver, one line> |
+| 1 | <日本語の動詞始まりのタスク名> | `<run_id>-01` | <category> | <o> | <m> | <p> | <pert> | <complexity driver, one line> |
 
 ## 見積もり手法
 
