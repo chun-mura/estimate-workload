@@ -694,6 +694,132 @@ class TestCalibration(TestReferenceClass):
         )
 
 
+class TestPipeline(HistoryBase):
+    def write_done(self, records):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        with open(self.path, "a", encoding="utf-8") as fh:
+            for r in records:
+                fh.write(json.dumps(r) + "\n")
+
+    def payload(self, **over):
+        base = {
+            "history_path": self.path,
+            "slug": "feat",
+            "tasks": [
+                {"task": "Add endpoint", "category": "backend-api",
+                 "tags": ["auth"], "o": 4, "m": 8, "p": 16,
+                 "default_factor": 0.45},
+                {"task": "Write guide", "category": "docs", "tags": [],
+                 "o": 1, "m": 2, "p": 3, "default_factor": 0.35},
+            ],
+            "trials": 500,
+            "seed": 42,
+        }
+        base.update(over)
+        return base
+
+    def test_cold_start_runs_whole_flow(self):
+        out = ec.cmd_pipeline(self.payload())
+        self.assertEqual(out["tasks"][0]["id"], out["run_id"] + "-01")
+        self.assertEqual(
+            out["tasks"][0]["correction"],
+            {"skipped": "insufficient_data", "count": 0},
+        )
+        self.assertEqual(out["tasks"][0]["o"], 4)  # uncorrected
+        self.assertEqual(
+            out["tasks"][0]["ai_factor"], {"factor": 0.45, "source": "default"}
+        )
+        self.assertLess(out["ai_assisted"]["p80"], out["traditional"]["p80"])
+        # history and run summary both persisted
+        recs = [json.loads(l) for l in self.raw_lines()]
+        self.assertEqual([r["run_id"] for r in recs], [out["run_id"]] * 2)
+        self.assertTrue(os.path.isfile(os.path.join(
+            os.path.dirname(self.path), "runs", out["run_id"] + ".json"
+        )))
+        self.assertEqual(out["summary"]["path"], os.path.join(
+            os.path.dirname(self.path), "runs", out["run_id"] + ".json"
+        ))
+
+    def test_applies_reference_class_correction(self):
+        # 5 done backend-api records at ratio actual/pert = 2.0
+        self.write_done([
+            _done_record(i, tags=["auth"], actual=20.0) for i in range(5)
+        ])
+        out = ec.cmd_pipeline(self.payload(ai_view=False))
+        t = out["tasks"][0]
+        self.assertEqual(t["correction"]["ratio_p50"], 2.0)
+        self.assertEqual(t["m"], 16.0)   # 8 * 2.0
+        self.assertEqual(t["p"], 32.0)   # 16 * 2.0
+        # corrected values are what got persisted
+        rec = json.loads(self.raw_lines()[5])
+        self.assertEqual(rec["m"], 16.0)
+
+    def test_learned_factor_wins_over_default(self):
+        recs = [_done_record(i, actual=5.0, ai=True) for i in range(3)]
+        recs += [_done_record(i + 3, actual=10.0, ai=False) for i in range(3)]
+        self.write_done(recs)
+        out = ec.cmd_pipeline(self.payload())
+        self.assertEqual(out["tasks"][0]["ai_factor"], {
+            "factor": 0.5, "source": "learned", "low_sample": True,
+        })
+        self.assertEqual(
+            out["tasks"][1]["ai_factor"], {"factor": 0.35, "source": "default"}
+        )
+
+    def test_ai_view_false_skips_factors_and_uses_traditional_basis(self):
+        payload = self.payload(ai_view=False)
+        for t in payload["tasks"]:
+            del t["default_factor"]
+        out = ec.cmd_pipeline(payload)
+        self.assertIsNone(out["ai_assisted"])
+        self.assertNotIn("ai_factor", out["tasks"][0])
+        summary_path = os.path.join(
+            os.path.dirname(self.path), "runs", out["run_id"] + ".json"
+        )
+        with open(summary_path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+        self.assertEqual(doc["size"]["basis"], "traditional_p80")
+
+    def test_missing_default_factor_fails_before_any_write(self):
+        payload = self.payload()
+        del payload["tasks"][1]["default_factor"]
+        with self.assertRaisesRegex(ec.CalcError, "default_factor"):
+            ec.cmd_pipeline(payload)
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_run_summary_failure_is_recoverable(self):
+        out = ec.cmd_pipeline(self.payload(
+            boundaries={"s_max_hours": 16, "m_max_hours": 16}
+        ))
+        self.assertIn("error", out["summary"])
+        # history was still written
+        self.assertEqual(len(self.raw_lines()), 2)
+
+    def test_boundaries_pass_through_to_summary(self):
+        out = ec.cmd_pipeline(self.payload(
+            boundaries={"s_max_hours": 500, "m_max_hours": 1000}
+        ))
+        self.assertEqual(out["summary"]["size"], "S")
+
+    def test_simulation_params_pass_through(self):
+        out = ec.cmd_pipeline(self.payload(correlation=0.7, hours_per_day=6))
+        self.assertEqual(out["correlation"], 0.7)
+        self.assertEqual(out["hours_per_day"], 6)
+        self.assertAlmostEqual(
+            out["traditional"]["p80_days"],
+            out["traditional"]["p80"] / 6, delta=0.01,
+        )
+
+    def test_rejects_unknown_category(self):
+        payload = self.payload()
+        payload["tasks"][0]["category"] = "nope"
+        with self.assertRaisesRegex(ec.CalcError, "pipeline.*category"):
+            ec.cmd_pipeline(payload)
+
+    def test_is_registered_as_payload_command(self):
+        self.assertIs(ec.PAYLOAD_COMMANDS["pipeline"], ec.cmd_pipeline)
+
+
 class TestDistribute(unittest.TestCase):
     def test_proportional_split_sums_to_total(self):
         out = ec.cmd_distribute({

@@ -468,7 +468,7 @@ def cmd_reference_class(payload):
     if not isinstance(tasks, list) or not tasks:
         raise CalcError("reference-class: 'tasks' must be a non-empty list")
     min_records = payload.get("min_records", 5)
-    max_anchors = payload.get("max_anchors", 5)
+    max_anchors = payload.get("max_anchors", 3)
     for key, value in (("min_records", min_records), ("max_anchors", max_anchors)):
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
             raise CalcError(f"reference-class: '{key}' must be a positive integer")
@@ -492,8 +492,8 @@ def cmd_reference_class(payload):
             reverse=True,
         )
         anchors = [
-            {k: r.get(k) for k in ("task", "o", "m", "p", "pert", "actual",
-                                    "ai_assisted", "tags")}
+            {k: r.get(k) for k in ("task", "pert", "actual", "ai_assisted",
+                                    "tags")}
             for r in ranked[:max_anchors]
         ]
         entry = {"name": t.get("name", ""), "anchors": anchors}
@@ -587,6 +587,147 @@ def cmd_calibration(payload):
     return result
 
 
+def cmd_pipeline(payload):
+    """Run the whole post-WBS flow in one call: reference-class correction,
+    traditional and AI-assisted simulation, history append, run summary.
+
+    Pure computation runs first, so a validation or simulation error leaves
+    no trace on disk. History is persisted before the run summary; a
+    run-summary failure is reported as {"summary": {"error": ...}} instead of
+    failing the call, because history is already authoritative at that point.
+    """
+    history_path = _required_string(payload, "history_path", "pipeline")
+    _required_string(payload, "slug", "pipeline")
+    tasks = payload.get("tasks")
+    if not isinstance(tasks, list) or not tasks:
+        raise CalcError("pipeline: 'tasks' must be a non-empty list")
+    ai_view = payload.get("ai_view", True)
+    if not isinstance(ai_view, bool):
+        raise CalcError("pipeline: 'ai_view' must be a boolean")
+    for i, t in enumerate(tasks):
+        label = f"pipeline: tasks[{i}]"
+        if not isinstance(t, dict) or not isinstance(t.get("task"), str) \
+                or not t["task"]:
+            raise CalcError(f"{label}: 'task' must be a non-empty string")
+        if t.get("category") not in CATEGORIES:
+            raise CalcError(
+                f"{label}: category {t.get('category')!r} not in "
+                f"{sorted(CATEGORIES)}"
+            )
+        validate_three_point(t, label)
+        if ai_view:
+            factor = t.get("default_factor")
+            if not _is_number(factor) or factor <= 0:
+                raise CalcError(
+                    f"{label}: 'default_factor' must be a positive number "
+                    "when 'ai_view' is true"
+                )
+
+    ref = cmd_reference_class({
+        "history_path": history_path,
+        "tasks": [
+            {"name": t["task"], "category": t.get("category"),
+             "tags": t.get("tags", []), "o": t["o"], "m": t["m"], "p": t["p"]}
+            for t in tasks
+        ],
+    })
+    final = []
+    for t, entry in zip(tasks, ref["tasks"]):
+        corr = entry["correction"]
+        final.append({
+            "task": t["task"], "category": t["category"],
+            "tags": t.get("tags", []),
+            "o": corr.get("corrected_o", t["o"]),
+            "m": corr.get("corrected_m", t["m"]),
+            "p": corr.get("corrected_p", t["p"]),
+            "correction": {
+                k: v for k, v in corr.items() if not k.startswith("corrected_")
+            },
+        })
+
+    sim_base = {
+        key: payload[key]
+        for key in ("correlation", "hours_per_day", "trials", "seed")
+        if key in payload
+    }
+    traditional = cmd_simulate({**sim_base, "tasks": [
+        {"name": t["task"], "o": t["o"], "m": t["m"], "p": t["p"]}
+        for t in final
+    ]})
+
+    ai_assisted = None
+    factors = []
+    if ai_view:
+        calibration = cmd_calibration({"history_path": history_path})
+        learned = calibration.get("ai_assistance_factors") or {}
+        ai_tasks = []
+        for t, ft in zip(tasks, final):
+            entry = learned.get(ft["category"])
+            if entry:
+                info = {"factor": entry["factor"], "source": "learned"}
+                if entry.get("low_sample"):
+                    info["low_sample"] = True
+            else:
+                info = {"factor": t["default_factor"], "source": "default"}
+            factors.append(info)
+            ai_tasks.append({"name": ft["task"], "o": ft["o"], "m": ft["m"],
+                             "p": ft["p"], "factor": info["factor"]})
+        ai_assisted = cmd_simulate({**sim_base, "tasks": ai_tasks})
+
+    append_payload = {
+        "history_path": history_path, "slug": payload["slug"],
+        "tasks": [
+            {k: t[k] for k in ("task", "category", "tags", "o", "m", "p")}
+            for t in final
+        ],
+    }
+    if "lock_timeout" in payload:
+        append_payload["lock_timeout"] = payload["lock_timeout"]
+    run_id = cmd_append_history(append_payload)["run_id"]
+
+    summary_payload = {
+        "run_id": run_id, "history_path": history_path,
+        "traditional": traditional["total"],
+        "ai_assisted": ai_assisted["total"] if ai_assisted else None,
+    }
+    if "boundaries" in payload:
+        summary_payload["boundaries"] = payload["boundaries"]
+    try:
+        summary_doc = cmd_run_summary(summary_payload)
+        summary = {
+            "path": os.path.join(
+                os.path.dirname(history_path), "runs", f"{run_id}.json"
+            ),
+            "size": summary_doc["size"]["label"],
+        }
+    except CalcError as exc:
+        summary = {"error": str(exc)}
+
+    out_tasks = []
+    for i, t in enumerate(final):
+        out = {
+            "id": f"{run_id}-{i + 1:02d}",
+            "task": t["task"], "category": t["category"],
+            "o": t["o"], "m": t["m"], "p": t["p"],
+            "pert": traditional["tasks"][i]["pert"],
+            "correction": t["correction"],
+        }
+        if ai_view:
+            out["ai_factor"] = factors[i]
+        out_tasks.append(out)
+    return {
+        "run_id": run_id,
+        "tasks": out_tasks,
+        "traditional": traditional["total"],
+        "ai_assisted": ai_assisted["total"] if ai_assisted else None,
+        "trials": traditional["trials"],
+        "correlation": traditional["correlation"],
+        "hours_per_day": traditional["hours_per_day"],
+        "summary": summary,
+        "warnings": ref["warnings"],
+    }
+
+
 def cmd_distribute(payload):
     total = payload.get("total")
     if not _is_number(total) or total <= 0:
@@ -629,6 +770,7 @@ PAYLOAD_COMMANDS = {
     "calibration": cmd_calibration,
     "distribute": cmd_distribute,
     "run-summary": cmd_run_summary,
+    "pipeline": cmd_pipeline,
 }
 
 
