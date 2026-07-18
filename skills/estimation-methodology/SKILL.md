@@ -55,10 +55,10 @@ assumption and widen P for the affected tasks.
 1. Before assigning O/M/P, call `reference-class` with each task's
    category/tags to fetch anchors (similar completed tasks with their
    estimate vs. actual).
-2. After assigning O/M/P, call `reference-class` again including `m` and `p`
-   to get ratio-based corrections. Use `corrected_m`/`corrected_p` in place of
-   your raw values when provided. Anchoring improves the raw estimate;
-   correction removes residual bias — do both.
+2. After assigning raw O/M/P, the `pipeline` command applies ratio-based
+   corrections automatically and returns the corrected values — report those,
+   never your raw ones, when a correction applied. Anchoring improves the raw
+   estimate; correction removes residual bias — do both.
 3. If correction is skipped (`insufficient_data`), say so in the report and
    note that ranges are uncorrected.
 4. Each correction states its `basis` (`category_and_tags` when enough
@@ -68,7 +68,8 @@ assumption and widen P for the affected tasks.
 
 ## Aggregation
 
-Call `simulate` with the final per-task O/M/P. Report the total as:
+The `pipeline` command simulates over the final (corrected) per-task O/M/P.
+Report the total as:
 - **P50** — "as likely over as under"; use for internal planning.
 - **P80** — commitment-grade; use for external quotes.
 Never present the sum of M values as "the estimate".
@@ -88,12 +89,13 @@ Report BOTH, clearly labeled (unless the user declined the AI-assisted view
 at intake — then report only the traditional view and say the AI-assisted
 view was skipped at the user's request):
 - **Traditional effort:** the simulated totals as-is, in hours and person-days.
-  Pass `hours_per_day` from `.estimate/config.json` (if present) to `simulate`
+  Pass `hours_per_day` from `.estimate/config.json` (if present) to `pipeline`
   and report the returned `p50_days`/`p80_days` — never divide hours yourself.
 - **AI-assisted effort:** per-category multipliers applied to task hours before
-  simulation. Use learned factors from `calibration` when a category has them;
-  otherwise the defaults in `references/ai-assistance-factors.md`. State which
-  source each factor came from.
+  simulation. Supply each task's `default_factor` from
+  `references/ai-assistance-factors.md`; `pipeline` replaces it with the
+  learned factor when the category has one, and reports each factor's
+  `source`. State that source in the report.
 
 ## Report language
 

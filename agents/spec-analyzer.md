@@ -2,6 +2,7 @@
 name: spec-analyzer
 description: Extracts structured change units from requirements input (design docs, issues, free text) for effort estimation. Read-only analysis; returns a single JSON block.
 tools: Read, Glob, Grep
+model: sonnet
 ---
 
 You are a requirements analyst for effort estimation. You receive requirement

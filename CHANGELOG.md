@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Changed
+- Cut per-run token usage of `/estimate:new`: the post-WBS flow (correction,
+  both simulations, history append, run summary) is now one `pipeline` call
+  from a single payload file instead of five calls each re-serializing the
+  task list; requirement documents are read only by the spec-analyzer, not
+  also by the main context (gap-check questions moved after analysis);
+  the chat output is a compact summary pointing at the report file; and
+  methodology references are loaded conditionally
+- Compact `reference-class` anchors to task/pert/actual/ai_assisted/tags and
+  lower the default `max_anchors` from 5 to 3
+- Pin both analysis agents to `model: sonnet` and constrain the
+  code-analyzer to targeted reads within the change's blast radius
 - Store the point estimate as the triangular mean `(o+m+p)/3` so it matches
   the distribution the Monte Carlo simulation samples; the old beta-PERT
   formula made calibration misreport bias on skewed ranges. History
@@ -20,6 +31,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   percentiles, matching the triangular distribution
 
 ### Added
+- `pipeline` subcommand running reference-class correction, traditional and
+  AI-assisted simulation (learned factors override the supplied
+  `default_factor`), history append, and run summary in one invocation;
+  a run-summary failure is returned as `summary.error` instead of failing
+  the call since history is already written
 - `hours_per_day` input to `simulate` (validated, default 8) with
   `p50_days`/`p80_days` in the output, so person-day conversion goes through
   the calculation script instead of freehand division

@@ -14,10 +14,12 @@ Input: "Add OAuth login to our Express app" + repo with existing session auth.
 4. First reference-class call (category/tags only) returns anchors, e.g. a past
    backend-api [auth] task: expected 8 h → actual 11 h. Estimate the callback
    task relative to that: O=6, M=10, P=20.
-5. Second reference-class call (with m, p) returns ratio_p50 1.2, ratio_p80 1.6
-   → corrected_m 12, corrected_p 32. Use corrected values.
-6. simulate over all corrected tasks → total p50 34 h, p80 46 h.
-7. Report: traditional 34–46 h (4.3–5.8 person-days); AI-assisted view applies
-   factors (0.45 backend, …) → p50 16 h, p80 22 h. Assumptions: provider is
-   Google only. Skipped corrections noted where data was insufficient.
-8. append-history writes 4 records with status "estimated".
+5. One `pipeline` call with the raw O/M/P and per-task `default_factor`:
+   it corrects the callback task (ratio_p50 1.2, ratio_p80 1.6 → corrected_m
+   12, corrected_p 32), simulates both views over the corrected tasks
+   (traditional p50 34 h, p80 46 h; AI-assisted p50 16 h, p80 22 h with
+   factor sources), appends 4 history records with status "estimated", and
+   writes the run summary.
+6. Report: traditional 34–46 h (4.3–5.8 person-days); AI-assisted 16–22 h.
+   Assumptions: provider is Google only. Skipped corrections noted where data
+   was insufficient.
