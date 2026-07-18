@@ -47,6 +47,7 @@ claude --plugin-dir .
    /estimate:new --mode economy docs/spec.md docs/tasks.md
    /estimate:new --mode quality --ai-view docs/spec.md docs/tasks.md
    /estimate:new --mode economy --no-ai-view docs/spec.md docs/tasks.md
+   /estimate:new docs/04_詳細設計/A-AR-001_自動返信設定画面_補足文言.md
    ```
 
    This reads the input, dispatches the analysis selected by the mode, builds the WBS,
@@ -54,7 +55,10 @@ claude --plugin-dir .
    under `docs/estimates/`, and prints the `run_id` you'll need next. Every
    report follows one fixed structure
    (`skills/new/references/report-template.md`), so reports are comparable
-   run to run.
+   run to run. When a source filename begins with a design ID such as
+   `A-AR-001_`, the report filename is standardized as
+   `YYYY-MM-DD-a-ar-001-<work-name>.md`. Use `--id a-ar-001` to set or
+   override the ID when it cannot be derived from the source filename.
 
    One invocation is one related-task batch. In `quality` mode, requirement
    and repository analysis run once for the full batch. In `economy` mode,

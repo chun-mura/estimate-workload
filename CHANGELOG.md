@@ -15,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - The optional, normally skipped worked example reference.
 
 ### Added
+- `/estimate:new` derives an ID such as `a-ar-001` from a detailed-design
+  source filename (or accepts `--id`) and includes it exactly once in the
+  generated estimate-report filename.
 - AI支援表示を `/estimate:new` の `--ai-view` / `--no-ai-view` で明示できるようにした。
 - Document in the README's Versioning section that any change to
   `scripts/`, `skills/`, or `agents/` must bump `plugin.json`'s `version` and

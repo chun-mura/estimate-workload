@@ -1,6 +1,6 @@
 ---
 description: Produce a scientifically-grounded effort estimate (WBS + 3-point + Monte Carlo + reference-class calibration) from any mix of design docs, issues, or free-text requirements, plus codebase analysis. Use when the user asks to estimate effort, workload, or delivery time for described work.
-argument-hint: [--mode quality|economy] [--ai-view|--no-ai-view] [file paths and/or a description]
+argument-hint: [--mode quality|economy] [--ai-view|--no-ai-view] [--id <design-id>] [file paths and/or a description]
 ---
 
 # /estimate:new
@@ -18,27 +18,38 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
 Examples:
 - `/estimate:new --mode quality --ai-view docs/spec.md` skips both intake choices.
 - `/estimate:new --no-ai-view docs/spec.md` asks only for the mode.
+- `/estimate:new --id a-ar-001 docs/spec.md` writes a report whose filename
+  includes `a-ar-001`.
 - `/estimate:new docs/spec.md` keeps the existing mode-and-AI-view question.
 
 Options: before sources, accept `--mode quality|economy`, `--ai-view`, and
-`--no-ai-view` in any order. Remove all recognized options before treating
-the remainder as sources. Each option may appear at most once; `--ai-view`
-and `--no-ai-view` are mutually exclusive. `--mode quality --ai-view` is
-valid. A missing or invalid `--mode` value, any duplicate or conflicting
-option, or an unknown leading `--...` option is an input error: stop before
-intake, agent dispatch, or CALC. With no mode flag, obtain a mode choice in
-step 2; do not select a mode by default.
+`--no-ai-view`, and `--id <design-id>` in any order. Remove all recognized
+options before treating the remainder as sources. Each option may appear at
+most once; `--ai-view` and `--no-ai-view` are mutually exclusive. `--mode
+quality --ai-view --id a-ar-001` is valid. `design-id` must match
+`<letters>-<letters>-<three digits or 統合>`, such as `a-ar-001` or
+`a-da-統合`; normalize it to lowercase. A missing or invalid `--mode` or
+`--id` value, any duplicate or conflicting option, or an unknown leading
+`--...` option is an input error: stop before intake, agent dispatch, or
+CALC. With no mode flag, obtain a mode choice in step 2; do not select a
+mode by default.
 
 ## Steps
 
 1. **Mode-aware intake.** Validate and remove all leading options exactly as
    the Options contract requires, resolving `mode` to `quality`, `economy`, or
-   unspecified and `ai_view` to `true`, `false`, or unspecified. Then check
-   every remaining provided path exists and is readable (a single `ls` is
-   enough), without reading its contents. Do NOT read document contents into
-   this context — the spec-analyzer reads them in full in step 3; reading them
-   twice wastes context. For each unreadable or missing path: tell the user,
-   treat it as not provided, and carry the gap into step 4.
+   unspecified, `ai_view` to `true`, `false`, or unspecified, and `report_id`
+   to the explicit normalized ID or unspecified. Then check every remaining
+   provided path exists and is readable (a single `ls` is enough), without
+   reading its contents. Do NOT read document contents into this context — the
+   spec-analyzer reads them in full in step 3; reading them twice wastes
+   context. For each unreadable or missing path: tell the user, treat it as
+   not provided, and carry the gap into step 4. If `report_id` is unspecified,
+   derive it from readable source filenames that begin with
+   `<design-id>_`, using the same ID format as the Options contract. If one
+   distinct ID is found, normalize and use it. If no ID is found, ask the user
+   for one; if multiple distinct IDs are found, ask the user to choose one.
+   Do not create a report until `report_id` is resolved.
 2. **Mode and AI view.** Ask about AI view only when `ai_view` is unspecified.
    When both `mode` and `ai_view` are unspecified, make exactly one
    AskUserQuestion call that asks both the `quality` versus `economy` mode and
@@ -114,8 +125,11 @@ step 2; do not select a mode by default.
    `${CLAUDE_PLUGIN_ROOT}/skills/new/references/report-template.md` and follow
    it exactly — its section order, heading text, and table columns are fixed, so
    that every run produces a structurally identical report. Write to
-   `docs/estimates/YYYY-MM-DD-<slug>.md`. If writing fails, print the full
-   report in chat instead — history is already saved.
+   `docs/estimates/YYYY-MM-DD-<report_id>-<report_slug>.md`. `report_slug` is
+   the kebab-case work name after removing a leading copy of `report_id`, so
+   the ID appears exactly once in the filename. If removing the ID leaves no
+   name, use only `YYYY-MM-DD-<report_id>.md`. If writing fails, print the
+   full report in chat instead — history is already saved.
    Before writing, confirm every number and id in the report came from the
    `pipeline` result of step 7: totals from `traditional`/`ai_assisted`
    (including `p50_days`/`p80_days` — never divide hours yourself), per-task
