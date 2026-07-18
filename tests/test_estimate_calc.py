@@ -640,16 +640,14 @@ class TestPipeline(HistoryBase):
 
     def test_returns_the_reproduction_parameters_to_its_caller(self):
         # The report template quotes distribution/trials/seed, and the skill
-        # reads this return value — not the summary file — so the parameters
-        # have to come back here or the report cannot be filled honestly.
+        # reads this return value, so the parameters have to come back here or
+        # the report cannot be filled honestly.
         out = ec.cmd_pipeline(self.payload())
         self.assertEqual(out["simulation"]["distribution"], "triangular")
 
     def test_history_schema_version_is_unaffected_by_the_run_bump(self):
-        # The two versions are independent. Bumping the run-summary format
-        # must not restamp history records, which readers of other checkouts
-        # would then skip as unknown. Pinned to the literal so a future bump
-        # of either constant has to be a deliberate edit here.
+        # History schema remains independent from output-format changes. Pin it
+        # to the literal so a future history-schema bump is deliberate.
         out = ec.cmd_pipeline(self.payload())
         recs = [json.loads(l) for l in self.raw_lines()]
         self.assertEqual({r["schema_version"] for r in recs}, {2})
