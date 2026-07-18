@@ -72,32 +72,18 @@ claude --plugin-dir .
 ## Data & privacy
 
 The plugin stores project-local data under `.estimate/`. Task estimates and
-actuals live in `.estimate/history.jsonl`; each estimate also gets a
-machine-readable point-in-time snapshot at `.estimate/runs/<run_id>.json`.
-Nothing is sent anywhere else.
+actuals live in `.estimate/history.jsonl`, the only persistent estimate
+artifact. Nothing is sent anywhere else.
 
-`history.jsonl` is one estimated or completed task record per line and is only
-written through `append-history` and `update-actual`. Run-summary JSON files
-contain the run id, generated time, S/M/L classification and boundaries,
-traditional and AI-assisted totals (hours and person-days), the persisted task
-ids/categories/expected means, and a `simulation` block recording how the
-totals were produced — sampling distribution, trial count, correlation,
-hours per day, and the seed each view used. Those seeds make a run
-reproducible: replaying `simulate` with the recorded parameters and seed
-returns the same percentiles, even when the original run was not seeded
-explicitly. They are written atomically by `run-summary` and are not
-regenerated
-when `/estimate:record` later stores actuals.
+`history.jsonl` stores one estimated or completed task record per line and is
+only written through `append-history` and `update-actual`. The command returns
+simulation metadata for the current report; that metadata is not saved as a
+separate estimate artifact.
 
-Run-summary schema version 3 introduced `analysis.mode` and
-`analysis.agents`, which record the selected analysis mode and the analyzers
-that supplied evidence for the estimate.
-
-Choose the repository policy that fits your project. Commit both
-`.estimate/history.jsonl` and `.estimate/runs/` to share calibration data and
-stable machine-readable estimates with the team, or ignore both when estimate
-data should remain local. Team members benefit from shared anchors and
-corrections only when `history.jsonl` is shared.
+Choose the repository policy that fits your project. Commit
+`.estimate/history.jsonl` to share calibration data with the team, or ignore
+it when estimate data should remain local. Team members benefit from shared
+anchors and corrections only when `history.jsonl` is shared.
 
 Run ids embed a timestamp and slug and are de-duplicated only against the
 local history file. If two clones estimate work with the same slug in the same
@@ -147,14 +133,9 @@ estimates with a point-estimate formula that had already been corrected in
 this repo.
 
 The plugin follows semver (`.claude-plugin/plugin.json`). History records carry
-a `schema_version`; run summaries carry an independent `schema_version` so a
-breaking change to one format cannot silently change the other. Readers of
-history never rewrite the file and skip records with an unknown
-`schema_version`, reporting a warning instead of failing. Records written by
-plugin 0.1.x carry `schema_version: 1`, whose `pert` field was computed with a
-formula that does not match the simulation model; current readers exclude them
-from anchors and calibration rather than mixing incompatible baselines.
-Consumers of run summaries must check their schema version before parsing:
-summaries written by plugin 0.1.x carry `schema_version: 1` and have no
-`simulation` block or person-day fields, so the runs they describe cannot be
-reproduced.
+a `schema_version`; readers never rewrite the file and skip records with an
+unknown `schema_version`, reporting a warning instead of failing. Records
+written by plugin 0.1.x carry `schema_version: 1`, whose `pert` field was
+computed with a formula that does not match the simulation model; current
+readers exclude them from anchors and calibration rather than mixing
+incompatible baselines.

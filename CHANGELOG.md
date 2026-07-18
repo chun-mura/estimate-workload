@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Removed
+- Machine-readable run-summary JSON files, their size classification, and
+  the `run-summary` calculator command. `.estimate/history.jsonl` is now the
+  sole persisted estimate artifact.
+- Duplicate traditional and AI-assisted total tables from estimate reports;
+  totals appear once in the summary table.
+- The optional, normally skipped worked example reference.
+
 ### Added
 - Document in the README's Versioning section that any change to
   `scripts/`, `skills/`, or `agents/` must bump `plugin.json`'s `version` and
