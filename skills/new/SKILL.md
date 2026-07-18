@@ -70,28 +70,20 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
    If the returned `summary` is `{"error": ...}`, history is already
    authoritative: report the error, omit the summary footer in step 8, and
    continue. Any other failure: stop and report stderr.
-8. **Report file.** Write the full report to
-   `docs/estimates/YYYY-MM-DD-<slug>.md`, in the conversation language. If
-   writing fails, print this full report in chat instead — history is already
-   saved. Must contain:
-   - WBS table: task, history id, category, O/M/P, expected mean (the `pert`
-     value from `pipeline`), rationale. (`/estimate:record` reads ids and
-     expected means back from this table — keep the columns.)
-   - Legend: one line defining P50 ("as likely over as under; use for internal
-     planning") and P80 ("commitment-grade; use for external quotes").
-   - Method note: "tasks correlated at rho = X via common-cause factor",
-     using the `correlation` returned by `pipeline`.
-   - Traditional totals: P50 and P80 in hours AND person-days, using the
-     returned `p50_days`/`p80_days` — never divide hours yourself.
-   - AI-assisted totals: P50/P80, with each factor's source (learned/default).
-     When declined in step 2, replace this section with one line: "AI-assisted
-     view: skipped at the user's request."
-   - Assumptions, Risks (including any agent failure), Out of scope.
-   - Calibration note: which corrections applied (with each one's `basis` and
-     a caveat when `low_sample` is set), which were skipped.
-   - Footer, only when `summary` succeeded: "Machine-readable summary:
-     `.estimate/runs/<run_id>.json`".
-   - Footer: "Record actuals when done: `/estimate:record <run_id>`".
+8. **Report file.** Read
+   `${CLAUDE_PLUGIN_ROOT}/skills/new/references/report-template.md` and follow
+   it exactly — its section order, heading text, and table columns are fixed, so
+   that every run produces a structurally identical report. Write to
+   `docs/estimates/YYYY-MM-DD-<slug>.md`. If writing fails, print the full
+   report in chat instead — history is already saved.
+   Before writing, confirm every number and id in the report came from the
+   `pipeline` result of step 7: totals from `traditional`/`ai_assisted`
+   (including `p50_days`/`p80_days` — never divide hours yourself), per-task
+   `pert`, and the full task ids used verbatim in the 履歴ID column.
+   Never compute, round, or invent any of them. If `pipeline` did not return
+   a `run_id`, do NOT write a report at all — report the failure and stop.
+   When `summary` returned `{"error": ...}`, keep the フッター section but
+   replace its Machine-readable line with the error.
    The history file is authoritative; the report is a point-in-time snapshot
    and is never edited afterward.
 9. **Chat summary.** Do NOT repeat the full report in chat. Give a compact

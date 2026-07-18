@@ -48,7 +48,10 @@ claude --plugin-dir .
 
    This reads the input, dispatches spec/code analysis, builds the WBS,
    assigns and corrects 3-point ranges, runs the simulation, writes a report
-   under `docs/estimates/`, and prints the `run_id` you'll need next.
+   under `docs/estimates/`, and prints the `run_id` you'll need next. Every
+   report follows one fixed structure
+   (`skills/new/references/report-template.md`), so reports are comparable
+   run to run.
 
 2. After the work is done, record actual hours against that run:
 

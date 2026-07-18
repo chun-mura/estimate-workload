@@ -97,6 +97,16 @@ view was skipped at the user's request):
   learned factor when the category has one, and reports each factor's
   `source`. State that source in the report.
 
-## Report language
+## Report format
 
-Write the estimation report in the language the user is conversing in.
+The report structure is fixed, not chosen per run: section order, heading
+text, and table columns come from
+`${CLAUDE_PLUGIN_ROOT}/skills/new/references/report-template.md`. Headings are
+Japanese; prose inside each section is Japanese too. Identifiers stay as the
+script emits them — category names, `run_id`, and task ids are never
+translated or shortened.
+
+A task's 履歴ID in the report is the full id returned by `pipeline`
+(`<run_id>-NN`), written verbatim. `/estimate:record` passes that string
+straight to `update-actual --id`, so an abbreviated id makes the run
+impossible to record actuals against.

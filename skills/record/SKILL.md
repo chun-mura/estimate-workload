@@ -16,11 +16,15 @@ Input: $ARGUMENTS (optionally a run_id).
 ## Steps
 
 1. **Identify the run.** Use the run_id from $ARGUMENTS. If absent, ask the
-   user for it — it is printed in the footer of the estimate report under
-   `docs/estimates/` (the user can also paste the report path; read the
-   report file, not the history file, to find the run_id and task ids).
-2. **Collect actuals.** For the run's tasks (ids `<run_id>-01`, `-02`, …, as
-   listed in the report): ask the user for actual hours per task. If they only
+   user for it — the estimate report under `docs/estimates/` carries it on its
+   `run_id` header line and in its フッター section (the user can also paste the
+   report path; read the report file, not the history file, to find the run_id
+   and task ids).
+2. **Collect actuals.** For the run's tasks — the 履歴ID column of the report's
+   WBS table, ids `<run_id>-01`, `-02`, … — ask the user for actual hours per
+   task. If the report's ids are abbreviated (an older report, before the
+   fixed template), reconstruct each as `<run_id>-NN` from the row order. If
+   they only
    know the run total, call CALC `distribute` with the total and the tasks'
    `id`/`pert` values from the report, show the proposed split, and let the
    user adjust before writing. Also ask whether the work was AI-assisted

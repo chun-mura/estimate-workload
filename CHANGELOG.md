@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- Reports produced by `/estimate:new` now follow one fixed structure
+  (`skills/new/references/report-template.md`): section order, heading text,
+  and WBS table columns no longer vary run to run, which previously made
+  reports impossible to compare or parse
+- The WBS 履歴ID column must carry the full task id from `pipeline` verbatim;
+  abbreviated ids (`01`, `-01`, slug-only) silently broke
+  `/estimate:record`, which feeds the column straight to `update-actual --id`
+- `/estimate:new` must not write a report when `pipeline` returned no
+  `run_id`, closing a path where a report could be produced with hand-computed
+  totals and a `.estimate/runs/` path that does not exist
+
 ### Changed
 - Cut per-run token usage of `/estimate:new`: the post-WBS flow (correction,
   both simulations, history append, run summary) is now one `pipeline` call
