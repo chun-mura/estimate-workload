@@ -358,6 +358,10 @@ class TestRunSummary(HistoryBase):
             {"mode": "economy", "agents": ["code-analyzer"]},
             {"mode": "quality", "agents": ["spec-analyzer", "spec-analyzer"]},
             {"mode": "unknown", "agents": ["spec-analyzer"]},
+            {"mode": "quality", "agents": [1]},
+            {"mode": "quality", "agents": [None]},
+            {"mode": "quality", "agents": [["spec-analyzer"]]},
+            {"mode": "quality", "agents": [{"name": "spec-analyzer"}]},
         ):
             with self.subTest(analysis=analysis), self.assertRaises(ec.CalcError):
                 ec.cmd_run_summary(self.payload(analysis=analysis))
@@ -831,9 +835,15 @@ class TestPipeline(HistoryBase):
             self.assertEqual(json.load(fh)["analysis"], analysis)
 
     def test_rejects_analysis_before_history_write(self):
-        with self.assertRaisesRegex(ec.CalcError, "pipeline: 'analysis.agents'"):
-            ec.cmd_pipeline(self.payload(analysis={"mode": "economy", "agents": []}))
-        self.assertFalse(os.path.exists(self.path))
+        for agents in ([], [1], [None], [["spec-analyzer"]],
+                       [{"name": "spec-analyzer"}]):
+            with self.subTest(agents=agents), self.assertRaisesRegex(
+                ec.CalcError, "pipeline: 'analysis.agents'"
+            ):
+                ec.cmd_pipeline(self.payload(
+                    analysis={"mode": "economy", "agents": agents}
+                ))
+            self.assertFalse(os.path.exists(self.path))
 
     def test_returns_the_reproduction_parameters_to_its_caller(self):
         # The report template quotes distribution/trials/seed, and the skill

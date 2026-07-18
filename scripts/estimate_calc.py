@@ -243,7 +243,10 @@ def _validated_analysis(payload, command):
         )
     if not isinstance(agents, list) or not agents:
         raise CalcError(f"{command}: 'analysis.agents' must be a non-empty list")
-    if any(agent not in ANALYSIS_AGENTS for agent in agents):
+    if any(
+        not isinstance(agent, str) or agent not in ANALYSIS_AGENTS
+        for agent in agents
+    ):
         raise CalcError(
             f"{command}: 'analysis.agents' must contain only "
             f"{sorted(ANALYSIS_AGENTS)}"
