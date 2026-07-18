@@ -6,10 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-19
+
 ### Changed
 - Generate WBS task names in Japanese, beginning with a verb. Technical
   identifiers such as API, framework, file, and schema names remain unchanged
   where they clarify the target.
+
+## [0.6.0] - 2026-07-19
+
+### Added
+- `/estimate:new` derives an ID such as `a-ar-001` from a detailed-design
+  source filename (or accepts `--id`) and includes it exactly once in the
+  generated estimate-report filename.
+
+## [0.5.0] - 2026-07-19
+
+### Added
+- AI支援表示を `/estimate:new` の `--ai-view` / `--no-ai-view` で明示できるようにした。
+
+## [0.4.0] - 2026-07-18
+
+### Changed
+- Clarify that economy-mode code-impact caveats are applied only after
+  identifying code-affecting WBS tasks.
 
 ### Removed
 - Machine-readable run-summary JSON files, their size classification, and
@@ -20,10 +40,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - The optional, normally skipped worked example reference.
 
 ### Added
-- `/estimate:new` derives an ID such as `a-ar-001` from a detailed-design
-  source filename (or accepts `--id`) and includes it exactly once in the
-  generated estimate-report filename.
-- AI支援表示を `/estimate:new` の `--ai-view` / `--no-ai-view` で明示できるようにした。
 - Document in the README's Versioning section that any change to
   `scripts/`, `skills/`, or `agents/` must bump `plugin.json`'s `version` and
   get a CHANGELOG entry in the same commit or PR. `version` had sat at
