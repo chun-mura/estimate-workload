@@ -45,6 +45,8 @@ claude --plugin-dir .
    ```
    /estimate:new --mode quality docs/spec.md docs/tasks.md
    /estimate:new --mode economy docs/spec.md docs/tasks.md
+   /estimate:new --mode quality --ai-view docs/spec.md docs/tasks.md
+   /estimate:new --mode economy --no-ai-view docs/spec.md docs/tasks.md
    ```
 
    This reads the input, dispatches the analysis selected by the mode, builds the WBS,

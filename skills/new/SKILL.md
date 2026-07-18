@@ -1,6 +1,6 @@
 ---
 description: Produce a scientifically-grounded effort estimate (WBS + 3-point + Monte Carlo + reference-class calibration) from any mix of design docs, issues, or free-text requirements, plus codebase analysis. Use when the user asks to estimate effort, workload, or delivery time for described work.
-argument-hint: [file paths and/or a description of the work to estimate]
+argument-hint: [--mode quality|economy] [--ai-view|--no-ai-view] [file paths and/or a description]
 ---
 
 # /estimate:new
@@ -15,29 +15,39 @@ and report its stderr — no freehand fallback.
 
 Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
 
-Mode: optionally begin $ARGUMENTS with exactly `--mode quality` or
-`--mode economy`; remove that pair before treating the remaining arguments as
-sources. More than one `--mode`, a missing value, or any other value is an
-input error: stop before intake, agent dispatch, or CALC. With no mode flag,
-obtain a mode choice in step 2; do not select a mode by default.
+Examples:
+- `/estimate:new --mode quality --ai-view docs/spec.md` skips both intake choices.
+- `/estimate:new --no-ai-view docs/spec.md` asks only for the mode.
+- `/estimate:new docs/spec.md` keeps the existing mode-and-AI-view question.
+
+Options: before sources, accept `--mode quality|economy`, `--ai-view`, and
+`--no-ai-view` in any order. Remove all recognized options before treating
+the remainder as sources. Each option may appear at most once; `--ai-view`
+and `--no-ai-view` are mutually exclusive. `--mode quality --ai-view` is
+valid. A missing or invalid `--mode` value, any duplicate or conflicting
+option, or an unknown leading `--...` option is an input error: stop before
+intake, agent dispatch, or CALC. With no mode flag, obtain a mode choice in
+step 2; do not select a mode by default.
 
 ## Steps
 
-1. **Mode-aware intake.** Validate and remove the optional leading mode pair
-   exactly as the Mode contract requires. Then check every remaining provided
-   path exists and is readable (a single `ls` is enough), without reading its
-   contents. Do NOT read document contents into this context — the
-   spec-analyzer reads them in full in step 3; reading them twice wastes
-   context. For each unreadable or missing path: tell the user, treat it as
-   not provided, and carry the gap into step 4.
-2. **Mode and AI view.** When no explicit mode exists, make exactly one
+1. **Mode-aware intake.** Validate and remove all leading options exactly as
+   the Options contract requires, resolving `mode` to `quality`, `economy`, or
+   unspecified and `ai_view` to `true`, `false`, or unspecified. Then check
+   every remaining provided path exists and is readable (a single `ls` is
+   enough), without reading its contents. Do NOT read document contents into
+   this context — the spec-analyzer reads them in full in step 3; reading them
+   twice wastes context. For each unreadable or missing path: tell the user,
+   treat it as not provided, and carry the gap into step 4.
+2. **Mode and AI view.** Ask about AI view only when `ai_view` is unspecified.
+   When both `mode` and `ai_view` are unspecified, make exactly one
    AskUserQuestion call that asks both the `quality` versus `economy` mode and
-   whether to include the AI-assisted effort view. If the mode is unanswered,
-   stop and request it; do not choose a default. If the AI-view answer is
-   unanswered, include it (the existing default behavior). With an explicit
-   mode, ask only whether to include the AI-assisted view unless the request
-   already states it explicitly. When the view is included, read
-   `references/ai-assistance-factors.md` now.
+   whether to include the AI-assisted effort view. When only `mode` is
+   unspecified, ask only for the mode. When only `ai_view` is unspecified,
+   ask only whether to include the AI-assisted effort view. If the mode is
+   unanswered, stop and request it; do not choose a default. If an asked
+   AI-view answer is unanswered, include it (the existing default behavior).
+   When `ai_view` is `true`, read `references/ai-assistance-factors.md` now.
 3. **Selected analysis.** Dispatch analyzers once per estimate invocation,
    with the full batch of requirement sources; never dispatch an analyzer in a
    loop over WBS tasks.
@@ -80,8 +90,8 @@ obtain a mode choice in step 2; do not select a mode by default.
    - `history_path: ".estimate/history.jsonl"`, `slug` (kebab-case from the
      work's name), and `tasks` — each with `task`, `category`, `tags`, raw
      `o`/`m`/`p`, and `default_factor` (the category's default from
-     `references/ai-assistance-factors.md`) when the AI view is included.
-   - `ai_view: false` when the user declined the view in step 2 (then
+     `references/ai-assistance-factors.md`) when `ai_view` is `true`.
+   - `ai_view: false` when `ai_view` is `false` (then
      `default_factor` is not needed).
    - `analysis`: `{ "mode": "quality", "agents": ["spec-analyzer",
      "code-analyzer"] }` when both quality analyzers succeed, or the same
