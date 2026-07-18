@@ -1,154 +1,119 @@
-# Changelog
+# 変更履歴
 
-All notable changes to this project will be documented in this file.
+このファイルには、プロジェクトにおける主な変更を記録します。
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+形式は [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) に基づいています。
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-07-19
+
+### 変更
+
+- README、変更履歴、計算スクリプトのコメント／docstring、テストコメントを日本語化した。
+
 ## [0.7.0] - 2026-07-19
 
-### Changed
-- Generate WBS task names in Japanese, beginning with a verb. Technical
-  identifiers such as API, framework, file, and schema names remain unchanged
-  where they clarify the target.
+### 変更
+
+- WBS のタスク名を日本語かつ動詞始まりで生成するようにした。対象を明確にする API、フレームワーク、ファイル、スキーマなどの技術識別子は維持する。
 
 ## [0.6.0] - 2026-07-19
 
-### Added
-- `/estimate:new` derives an ID such as `a-ar-001` from a detailed-design
-  source filename (or accepts `--id`) and includes it exactly once in the
-  generated estimate-report filename.
+### 追加
+
+- `/estimate:new` が詳細設計の入力ファイル名から `a-ar-001` のような ID を導出できるようにした（`--id` の指定も可能）。生成した見積もりレポートのファイル名には ID をちょうど1回含める。
 
 ## [0.5.0] - 2026-07-19
 
-### Added
+### 追加
+
 - AI支援表示を `/estimate:new` の `--ai-view` / `--no-ai-view` で明示できるようにした。
 
 ## [0.4.0] - 2026-07-18
 
-### Changed
-- Clarify that economy-mode code-impact caveats are applied only after
-  identifying code-affecting WBS tasks.
+### 変更
 
-### Removed
-- Machine-readable run-summary JSON files, their size classification, and
-  the `run-summary` calculator command. `.estimate/history.jsonl` is now the
-  sole persisted estimate artifact.
-- Duplicate traditional and AI-assisted total tables from estimate reports;
-  totals appear once in the summary table.
-- The optional, normally skipped worked example reference.
+- economy モードのコード影響に関する注意事項は、コードに影響する WBS タスクを特定した後にのみ適用することを明確化した。
 
-### Added
-- Document in the README's Versioning section that any change to
-  `scripts/`, `skills/`, or `agents/` must bump `plugin.json`'s `version` and
-  get a CHANGELOG entry in the same commit or PR. `version` had sat at
-  `0.1.0` since the initial scaffold through several behavior-changing
-  fixes, and a cached 0.1.0 install kept producing estimates with a
-  point-estimate formula already corrected upstream, with no version signal
-  that anything had changed
+### 削除
+
+- 機械可読な run-summary JSON ファイル、そのサイズ分類、`run-summary` 計算コマンドを削除した。`.estimate/history.jsonl` を唯一の永続的な見積もり成果物とした。
+- 見積もりレポート内の従来型・AI支援の重複した合計表を削除した。合計はサマリ表に1回だけ表示する。
+- 通常は省略する任意の実例リファレンスを削除した。
+
+### 追加
+
+- README のバージョニング節に、`scripts/`、`skills/`、`agents/` の変更時は同じコミットまたは PR で `plugin.json` の `version` 更新と CHANGELOG への記載が必要であることを記載した。初期スキャフォールド以降、複数の挙動変更を経ても `version` は `0.1.0` のままであり、キャッシュ済みの 0.1.0 は、すでに上流で修正されていた点見積もり式を使い続けていた。
 
 ## [0.3.0] - 2026-07-18
 
-### Added
-- `/estimate:new` now offers `quality` and `economy` analysis modes. Both
-  analyse a related task batch once; quality uses the specification and
-  codebase analyzers, while economy uses only the specification analyzer and
-  records mandatory code-impact caveats.
-- Run-summary schema version 3 records `analysis.mode` and
-  `analysis.agents`, making the evidence coverage of every new estimate
-  machine-readable.
+### 追加
+
+- `/estimate:new` に `quality` と `economy` の分析モードを追加した。どちらも関連タスク群を一度だけ分析する。quality は仕様・コードベース分析を利用し、economy は仕様分析のみを利用して必須のコード影響注意事項を記録する。
+- run-summary スキーマ v3 に `analysis.mode` と `analysis.agents` を記録し、各新規見積もりの証拠範囲を機械可読にした。
 
 ## [0.2.0] - 2026-07-18
 
-### Added
-- Run summaries record a `simulation` block — sampling distribution, trials,
-  correlation, hours per day, and the seed each view used — so a run can be
-  replayed exactly. `simulate` now resolves and returns a seed when the caller
-  supplies none; previously an unseeded run could never be reproduced from its
-  summary. Run summary `schema_version` bumped to 2
-- Run summaries persist `p50_days`/`p80_days` alongside the hour totals, so
-  reading person-days back no longer requires the freehand division the
-  methodology forbids
+### 追加
 
-### Fixed
-- Reports produced by `/estimate:new` now follow one fixed structure
-  (`skills/new/references/report-template.md`): section order, heading text,
-  and WBS table columns no longer vary run to run, which previously made
-  reports impossible to compare or parse
-- The WBS 履歴ID column must carry the full task id from `pipeline` verbatim;
-  abbreviated ids (`01`, `-01`, slug-only) silently broke
-  `/estimate:record`, which feeds the column straight to `update-actual --id`
-- `/estimate:new` must not write a report when `pipeline` returned no
-  `run_id`, closing a path where a report could be produced with hand-computed
-  totals and a `.estimate/runs/` path that does not exist
+- 実行サマリに、標本分布、試行回数、相関、1人日あたりの時間、各ビューが使用した seed を記録し、同じ実行を正確に再現できるようにした。`simulate` は seed 未指定時にも seed を決定して返す。従来は seed のない実行をサマリから再現できなかった。run-summary の `schema_version` を 2 に更新した。
+- 実行サマリに時間合計とともに `p50_days` / `p80_days` を永続化し、人日換算を手計算せず計算スクリプト経由で行えるようにした。
 
-### Changed
-- Cut per-run token usage of `/estimate:new`: the post-WBS flow (correction,
-  both simulations, history append, run summary) is now one `pipeline` call
-  from a single payload file instead of five calls each re-serializing the
-  task list; requirement documents are read only by the spec-analyzer, not
-  also by the main context (gap-check questions moved after analysis);
-  the chat output is a compact summary pointing at the report file; and
-  methodology references are loaded conditionally
-- Compact `reference-class` anchors to task/pert/actual/ai_assisted/tags and
-  lower the default `max_anchors` from 5 to 3
-- Pin both analysis agents to `model: sonnet` and constrain the
-  code-analyzer to targeted reads within the change's blast radius
-- Store the point estimate as the triangular mean `(o+m+p)/3` so it matches
-  the distribution the Monte Carlo simulation samples; the old beta-PERT
-  formula made calibration misreport bias on skewed ranges. History
-  `schema_version` bumped to 2; v1 records are excluded from anchors and
-  calibration with a warning (the file is never rewritten)
-- Apply the same ratio correction to `corrected_o` as to `corrected_m`
-  (still capped to stay below it) instead of only capping the raw value
-- Prefer tag-matched records for reference-class correction ratios and
-  report the population used as `basis`
-- Document O/P as the hard bounds of the sampled range rather than
-  percentiles, matching the triangular distribution
+### 修正
 
-### Added
-- `pipeline` subcommand running reference-class correction, traditional and
-  AI-assisted simulation (learned factors override the supplied
-  `default_factor`), history append, and run summary in one invocation;
-  a run-summary failure is returned as `summary.error` instead of failing
-  the call since history is already written
-- `hours_per_day` input to `simulate` (validated, default 8) with
-  `p50_days`/`p80_days` in the output, so person-day conversion goes through
-  the calculation script instead of freehand division
-- `low_sample: true` flag on corrections, calibration output, and learned
-  AI-assistance factors backed by fewer than 10 records
-- Validation of `min_records`/`max_anchors` in `reference-class`
-- README notes on updating the plugin and on run-id collisions when merging
-  shared history files
-- Marketplace-level description so `claude plugin validate --strict` passes
+- `/estimate:new` が生成するレポートの構造を `skills/new/references/report-template.md` による固定形式へ統一した。節順、見出し、WBS 表の列が実行ごとに変わらず、レポートを比較・解析できる。
+- WBS の履歴ID列には `pipeline` が返す完全なタスク ID をそのまま入れるようにした。省略 ID（`01`、`-01`、スラッグのみ）は、`update-actual --id` に直接渡す `/estimate:record` を失敗させていた。
+- `pipeline` が `run_id` を返さない場合、`/estimate:new` はレポートを書き込まないようにした。手計算の合計と存在しない `.estimate/runs/` パスを持つレポートを生成し得る経路を閉じた。
 
-### Removed
-- Dead `output_dir` payload key from `run-summary`; the summary always lands
-  in the history file's sibling `runs/` directory
+### 変更
+
+- `/estimate:new` の実行あたりのトークン使用量を削減した。WBS 後の補正、両シミュレーション、履歴追記、実行サマリを、タスクリストを繰り返し直列化する5回の呼び出しではなく、単一ペイロードファイルによる `pipeline` の1回の呼び出しへ集約した。要件文書はメインコンテキストではなく spec-analyzer のみが読み、チャット出力はレポートへの短い案内とした。
+- `reference-class` のアンカーを task/pert/actual/ai_assisted/tags に縮約し、既定の `max_anchors` を 5 から 3 に変更した。
+- 両分析エージェントを `model: sonnet` に固定し、code-analyzer の読み取り範囲を変更の影響範囲に絞った。
+- 点見積もりを、モンテカルロシミュレーションが標本を取る分布と一致する三角分布の平均 `(o+m+p)/3` として保存するようにした。履歴の `schema_version` を 2 に更新し、v1 レコードは警告付きでアンカーとキャリブレーションから除外する。
+- `corrected_o` にも `corrected_m` と同じ比率補正を適用し、`corrected_m` を超えないようにした。
+- 参照クラス補正の比率はタグ一致レコードを優先し、利用した母集団を `basis` として報告するようにした。
+- O/P はパーセンタイルではなく、標本範囲のハード境界であることを明記した。
+
+### 追加
+
+- 参照クラス補正、従来型・AI支援シミュレーション（学習済み係数は指定した `default_factor` を上書き）、履歴追記、実行サマリを1回で実行する `pipeline` サブコマンドを追加した。履歴書き込み後に実行サマリが失敗した場合は、呼び出し全体を失敗させず `summary.error` として返す。
+- `simulate` に、検証済み・既定値8の `hours_per_day` 入力と、出力の `p50_days` / `p80_days` を追加した。人日換算は手計算せず計算スクリプト経由で行う。
+- 10件未満のレコードに基づく補正、キャリブレーション出力、学習済み AI支援係数に `low_sample: true` フラグを追加した。
+- `reference-class` における `min_records` / `max_anchors` の検証を追加した。
+- プラグイン更新と共有履歴ファイルのマージ時における run-id 衝突について README に記載した。
+- `claude plugin validate --strict` を通すため、マーケットプレイスレベルの説明を追加した。
+
+### 削除
+
+- `run-summary` の未使用 `output_dir` ペイロードキーを削除した。サマリは常に履歴ファイルと同階層の `runs/` ディレクトリへ出力される。
 
 ## [0.1.0] - 2026-07-17
 
-### Added
-- Correlation modeling for common-cause risk in estimates
-- Machine-readable estimate summary persistence
-- AI-assisted effort view confirmation at estimate intake
-- Monte Carlo simulation subcommand with percentile helper
-- Append-history subcommand with tolerant history reader
-- Update-actual subcommand with locking and atomic rewrite
-- Reference-class subcommand for anchors and ratio correction
-- Calibration and distribute subcommands
-- Estimation methodology skill with taxonomy and AI factors
-- `spec-analyzer` and `code-analyzer` agents with JSON output contracts
-- `/estimate:new` orchestration skill
-- `/estimate:record` skill for actuals and calibration
-- Plugin marketplace manifest
-- MIT license
+### 追加
 
-### Changed
-- Migrated from legacy `commands/` directory to `skills/` layout
+- 見積もりにおける共通原因リスクの相関モデリング。
+- 機械可読な見積もりサマリの永続化。
+- 見積もり受付時の AI支援工数ビュー確認。
+- モンテカルロシミュレーションのサブコマンドとパーセンタイルヘルパー。
+- 寛容な履歴リーダーを備えた履歴追記サブコマンド。
+- ロックとアトミックリライトを備えた実績更新サブコマンド。
+- アンカーと比率補正のための参照クラスサブコマンド。
+- キャリブレーションと配分のサブコマンド。
+- 分類体系と AI係数を含む見積もり手法スキル。
+- JSON 出力契約を持つ `spec-analyzer` と `code-analyzer` エージェント。
+- `/estimate:new` のオーケストレーションスキル。
+- `/estimate:record` の実績記録スキル。
+- プラグインのマーケットプレイスマニフェスト。
+- MIT ライセンス。
 
-### Fixed
-- Run summary output path constrained to prevent path escape
-- Largest-remainder allocation in `distribute` to prevent negative shares
-- Final-review findings: `corrected_o` invariant, `ai_assisted` KeyError, append lock, error-JSON catch-all
+### 変更
+
+- 旧 `commands/` ディレクトリから `skills/` レイアウトへ移行した。
+
+### 修正
+
+- パスエスケープを防ぐよう run-summary の出力パスを制限した。
+- 負の配分を防ぐため `distribute` に最大剰余法を適用した。
+- 最終レビューで判明した `corrected_o` の不変条件、`ai_assisted` の KeyError、追記ロック、エラー JSON の包括的な捕捉を修正した。

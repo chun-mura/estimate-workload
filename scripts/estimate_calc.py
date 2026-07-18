@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""All statistics and history-file I/O for the estimate plugin.
+"""estimate プラグインの統計処理と履歴ファイル I/O。
 
-Skills and agents must never do arithmetic or edit `.estimate/history.jsonl`
-directly; this script is the single choke point for math, schema validation,
-ID generation, locking, and version handling.
+スキルとエージェントは算術処理や `.estimate/history.jsonl` の直接編集を
+行ってはならない。このスクリプトは、計算、スキーマ検証、ID生成、ロック、
+バージョン処理を一元的に扱う。
 
-Contract: `estimate_calc.py <subcommand> --input <file|->` reads a JSON
-payload, writes a JSON result to stdout, and on error writes
-{"error": "..."} to stderr and exits 1. `update-actual` takes flags
-instead of a payload. Argparse-level errors (missing/unknown flags or
-subcommands) are outside this contract: argparse prints plain text to
-stderr and exits 2.
+契約: `estimate_calc.py <subcommand> --input <file|->` は JSON ペイロードを
+読み込み、JSON の結果を標準出力へ書き出す。エラー時は
+`{"error": "..."}` を標準エラー出力へ書き出し、終了コード 1 で終了する。
+`update-actual` はペイロードではなくフラグを受け取る。Argparse レベルのエラー
+（フラグやサブコマンドの不足・不明）はこの契約の対象外であり、Argparse が
+標準エラー出力へ通常のテキストを出力して終了コード 2 で終了する。
 """
 import argparse
 import json
@@ -24,9 +24,9 @@ import time
 from datetime import datetime
 
 SCHEMA_VERSION = 2
-# v1 records store 'pert' computed as beta-PERT (o+4m+p)/6, which does not
-# match the triangular distribution cmd_simulate samples; mixing bases would
-# corrupt calibration ratios, so v1 records are excluded (with warnings).
+# v1 レコードの 'pert' は beta-PERT (o+4m+p)/6 で計算されており、
+# cmd_simulate が標本を取る三角分布とは一致しない。基準を混在させると
+# キャリブレーション比率が壊れるため、v1 レコードは警告付きで除外する。
 KNOWN_SCHEMA_VERSIONS = {2}
 CATEGORIES = {"backend-api", "frontend-ui", "db-migration", "infra", "test-only", "docs"}
 DEFAULT_TRIALS = 10_000
@@ -34,18 +34,18 @@ DEFAULT_CORRELATION = 0.3
 ANALYSIS_MODES = {"quality", "economy"}
 ANALYSIS_AGENTS = {"spec-analyzer", "code-analyzer"}
 
-# The sampling model cmd_simulate implements.
+# cmd_simulate が実装する標本抽出モデル。
 DISTRIBUTION = "triangular"
 DEFAULT_HOURS_PER_DAY = 8
 LOW_SAMPLE_THRESHOLD = 10
 
 
 class CalcError(Exception):
-    """User-facing validation or state error."""
+    """ユーザー向けの検証エラーまたは状態エラー。"""
 
 
 def percentile(values, q):
-    """Linear-interpolated percentile of values, q in [0, 100]."""
+    """値の線形補間パーセンタイル。q は [0, 100]。"""
     if not values:
         raise CalcError("percentile of empty list")
     xs = sorted(values)
@@ -58,11 +58,10 @@ def percentile(values, q):
 
 
 def triangular_mean(o, m, p):
-    """Mean of Triangular(o, m, p) — the distribution cmd_simulate samples.
+    """Triangular(o, m, p) の平均値。cmd_simulate が標本を取る分布。
 
-    Stored under the history field named 'pert' (name kept for schema
-    stability); it must stay consistent with the simulation model because
-    calibration divides actuals by it.
+    履歴ではスキーマ安定性のため 'pert' フィールドに保存する。キャリブレーションは
+    実績をこの値で割るため、シミュレーションモデルとの整合性を保つ必要がある。
     """
     return round((o + m + p) / 3.0, 2)
 
@@ -81,7 +80,7 @@ def validate_three_point(task, label):
 
 
 def triangular_inv_cdf(u, o, m, p):
-    """Inverse CDF of Triangular(o, m, p) for u in [0, 1]."""
+    """u が [0, 1] のときの Triangular(o, m, p) の逆累積分布関数。"""
     if o == p:
         return o
     fc = (m - o) / (p - o)
@@ -116,10 +115,10 @@ def cmd_simulate(payload):
 
     seed = payload.get("seed")
     if seed is None:
-        # An unseeded run is otherwise unreproducible: resolve a seed here so
-        # the caller can persist it and replay the exact same totals. Kept
-        # below 2**53 so it survives JSON readers that store numbers as
-        # IEEE-754 doubles — a rounded seed would replay a different run.
+        # seed がない実行は再現不能になるため、ここで seed を決定する。呼び出し元は
+        # これを保存し、同一の合計値を再現できる。IEEE-754 倍精度数で数値を扱う
+        # JSON リーダーでも保持されるよう 2**53 未満にする。丸められた seed では
+        # 異なる実行を再現してしまう。
         seed = random.randrange(2 ** 53)
     elif not isinstance(seed, int) or isinstance(seed, bool):
         raise CalcError("simulate: 'seed' must be an integer")
@@ -194,7 +193,7 @@ def schema_error(rec):
 
 
 def read_history(path):
-    """Return (valid_records, warnings); missing file means no history yet."""
+    """(有効なレコード, 警告) を返す。ファイルがなければ履歴はまだない。"""
     records, warnings = [], []
     if not os.path.exists(path):
         return records, warnings
@@ -435,9 +434,8 @@ def cmd_reference_class(payload):
             for r in ranked[:max_anchors]
         ]
         entry = {"name": t.get("name", ""), "anchors": anchors}
-        # Correct from the same population the anchors advertise: prefer
-        # tag-overlapping records, fall back to the whole category only when
-        # the tag-matched pool is too small to correct from.
+        # アンカーが示す母集団と同じデータから補正する。タグが重なるレコードを優先し、
+        # タグ一致の母集団が補正に小さすぎる場合にだけ、カテゴリ全体へフォールバックする。
         tag_matched = [r for r in same_cat if tags & set(r["tags"])] if tags else []
         if len(tag_matched) >= min_records:
             pool, basis = tag_matched, "category_and_tags"
@@ -526,11 +524,12 @@ def cmd_calibration(payload):
 
 
 def cmd_pipeline(payload):
-    """Run the whole post-WBS flow in one call: reference-class correction,
-    traditional and AI-assisted simulation, and history append.
+    """WBS後の全処理を1回で実行する。
 
-    Pure computation runs first, so a validation or simulation error leaves
-    no trace on disk. History is the only persisted output.
+    参照クラス補正、従来型・AI支援のシミュレーション、履歴への追記を行う。
+
+    純粋な計算を先に実行するため、検証またはシミュレーションが失敗してもディスクへ
+    変更は残らない。履歴だけが永続化される出力である。
     """
     history_path = _required_string(payload, "history_path", "pipeline")
     _required_string(payload, "slug", "pipeline")
@@ -622,13 +621,13 @@ def cmd_pipeline(payload):
         append_payload["lock_timeout"] = payload["lock_timeout"]
     run_id = cmd_append_history(append_payload)["run_id"]
 
-    # Returned to the caller so the report can record reproducible parameters.
+    # レポートへ再現条件を記録できるよう、呼び出し元へ返す。
     simulation = {
         "distribution": traditional["distribution"],
         "trials": traditional["trials"],
         "correlation": traditional["correlation"],
         "hours_per_day": traditional["hours_per_day"],
-        # Each view samples its own stream, so each carries its own seed.
+        # 各ビューは独立したストリームから標本を取るため、それぞれ固有の seed を持つ。
         "traditional_seed": traditional["seed"],
         "ai_assisted_seed": ai_assisted["seed"] if ai_assisted else None,
     }

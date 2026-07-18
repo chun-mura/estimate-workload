@@ -57,8 +57,8 @@ class TestSimulate(unittest.TestCase):
         self.assertEqual(out["tasks"][1]["pert"], 5.0)   # (2+3+10)/3
 
     def test_task_mean_approximates_simulated_mean(self):
-        # The 'pert' point estimate and the Monte Carlo totals must come from
-        # the same distribution, or calibration ratios drift by construction.
+        # 'pert' の点推定値とモンテカルロの合計値は同じ分布に基づく必要がある。
+        # 異なる分布では、構造上キャリブレーション比率がずれてしまう。
         out = ec.cmd_simulate({
             "tasks": [{"name": "x", "o": 2, "m": 4, "p": 20}],
             "trials": 50_000, "seed": 42, "correlation": 0,
@@ -78,8 +78,8 @@ class TestSimulate(unittest.TestCase):
         self.assertEqual(ec.cmd_simulate(self.payload(seed=42))["seed"], 42)
 
     def test_generates_and_reports_a_seed_when_none_given(self):
-        # Without this, an unseeded run is unreproducible: the totals it
-        # reports can never be regenerated from the summary alone.
+        # これがなければ seed のない実行は再現不能であり、報告した合計値を
+        # サマリだけから再生成できない。
         payload = self.payload()
         del payload["seed"]
         out = ec.cmd_simulate(payload)
@@ -93,15 +93,15 @@ class TestSimulate(unittest.TestCase):
                 ec.cmd_simulate(self.payload(seed=bad))
 
     def test_seed_zero_is_used_not_treated_as_missing(self):
-        # 0 is falsy; a truthiness check here would silently reseed the run.
+        # 0 は偽値である。真偽値判定では実行を黙って再 seed 化してしまう。
         out = ec.cmd_simulate(self.payload(seed=0))
         self.assertEqual(out["seed"], 0)
         self.assertEqual(out["total"], ec.cmd_simulate(self.payload(seed=0))["total"])
 
     def test_generated_seed_survives_json_round_trip(self):
-        # Run summaries are advertised as machine-readable; a seed above
-        # 2**53 loses precision in JSON readers backed by IEEE-754 doubles,
-        # which would make the recorded seed replay a different run.
+        # 実行サマリは機械可読として提供する。2**53 より大きい seed は IEEE-754
+        # 倍精度数を用いる JSON リーダーで精度を失い、記録した seed から別の実行を
+        # 再現してしまう。
         payload = self.payload()
         del payload["seed"]
         for _ in range(200):
@@ -265,7 +265,7 @@ class TestAppendHistory(HistoryBase):
                 })
         finally:
             os.remove(lock)
-        # lock released -> a normal append now succeeds
+        # ロック解放後は通常の追記が成功する。
         out = self.append()
         self.assertEqual(out["appended"], 1)
 
@@ -288,8 +288,8 @@ class TestReadHistory(HistoryBase):
         self.assertEqual(kinds, ["parse_error", "schema_violation"])
 
     def test_v1_records_skipped_with_warning(self):
-        # v1 'pert' was computed with a different formula; mixing it into
-        # calibration would corrupt the actual/pert ratios.
+        # v1 の 'pert' は異なる式で計算されていたため、キャリブレーションへ混在させると
+        # actual/pert 比率が壊れる。
         self.append()
         rec = json.loads(self.raw_lines()[0])
         rec["schema_version"] = 1
@@ -393,7 +393,7 @@ class TestReferenceClass(HistoryBase):
         self.assertEqual(len(entry["anchors"]), 3)
 
     def test_correction_uses_ratio_percentiles(self):
-        # actual/pert ratios: 1.0, 1.0, 1.0, 2.0, 2.0 -> p50 = 1.0
+        # actual/pert 比率: 1.0, 1.0, 1.0, 2.0, 2.0 → p50 = 1.0
         recs = [_done_record(i, actual=10.0) for i in range(3)]
         recs += [_done_record(i + 3, actual=20.0) for i in range(2)]
         self.write_done(recs)
@@ -432,7 +432,7 @@ class TestReferenceClass(HistoryBase):
         self.assertEqual(out["tasks"][0]["anchors"], [])
 
     def test_corrected_o_gets_ratio_correction_and_stays_below_corrected_m(self):
-        # actual/pert ratio 0.4 for all 5 records -> r50 = 0.4
+        # 5レコードすべての actual/pert 比率が 0.4 → r50 = 0.4
         recs = [_done_record(i, pert=10.0, actual=4.0) for i in range(5)]
         self.write_done(recs)
         out = ec.cmd_reference_class({
@@ -446,8 +446,8 @@ class TestReferenceClass(HistoryBase):
         self.assertLessEqual(corr["corrected_o"], corr["corrected_m"])
 
     def test_correction_prefers_tag_matched_pool(self):
-        # 5 tag-matched records at ratio 2.0 vs 5 tagless ones at ratio 1.0:
-        # the correction must come from the tag-matched pool the anchors show.
+        # タグ一致の5レコードは比率 2.0、タグなしの5レコードは比率 1.0。
+        # 補正はアンカーが示すタグ一致の母集団から求めなければならない。
         recs = [_done_record(i, tags=["auth"], actual=20.0) for i in range(5)]
         recs += [_done_record(i + 5, actual=10.0) for i in range(5)]
         self.write_done(recs)
@@ -560,8 +560,8 @@ class TestCalibration(TestReferenceClass):
         self.assertEqual(out["ai_assistance_factors"], {})
 
     def test_missing_ai_assisted_key_does_not_raise(self):
-        # 3 AI + 3 human records plus one record with the key entirely
-        # absent (schema-valid per schema_error, which only checks .get).
+        # AI 3件、人間 3件に加え、キー自体が存在しないレコードを1件追加する。
+        # schema_error は .get のみを検査するため、このレコードもスキーマ上は有効である。
         recs = [_done_record(i, actual=5.0, ai=True) for i in range(3)]
         recs += [_done_record(i + 3, actual=10.0, ai=False) for i in range(3)]
         no_key = _done_record(99)
@@ -570,7 +570,7 @@ class TestCalibration(TestReferenceClass):
         self.write_done(recs)
         out = ec.cmd_calibration({"history_path": self.path})
         self.assertEqual(out["count"], 7)
-        # the keyless record is excluded from both ai and human groups
+        # キーがないレコードは AI・人間のいずれのグループからも除外される。
         self.assertEqual(
             out["ai_assistance_factors"]["backend-api"]["ai_count"], 3
         )
@@ -639,15 +639,14 @@ class TestPipeline(HistoryBase):
             self.assertFalse(os.path.exists(self.path))
 
     def test_returns_the_reproduction_parameters_to_its_caller(self):
-        # The report template quotes distribution/trials/seed, and the skill
-        # reads this return value, so the parameters have to come back here or
-        # the report cannot be filled honestly.
+        # レポートテンプレートは distribution/trials/seed を記載し、スキルはこの
+        # 返却値を読む。そのため、正しくレポートを埋めるにはここで返す必要がある。
         out = ec.cmd_pipeline(self.payload())
         self.assertEqual(out["simulation"]["distribution"], "triangular")
 
     def test_history_schema_version_is_unaffected_by_the_run_bump(self):
-        # History schema remains independent from output-format changes. Pin it
-        # to the literal so a future history-schema bump is deliberate.
+        # 履歴スキーマは出力形式の変更から独立している。将来の履歴スキーマ更新を
+        # 意図的なものにするため、リテラル値へ固定する。
         out = ec.cmd_pipeline(self.payload())
         recs = [json.loads(l) for l in self.raw_lines()]
         self.assertEqual({r["schema_version"] for r in recs}, {2})
@@ -680,12 +679,12 @@ class TestPipeline(HistoryBase):
             out["tasks"][0]["ai_factor"], {"factor": 0.45, "source": "default"}
         )
         self.assertLess(out["ai_assisted"]["p80"], out["traditional"]["p80"])
-        # history is the only persisted output
+        # 履歴だけが永続化される出力である。
         recs = [json.loads(l) for l in self.raw_lines()]
         self.assertEqual([r["run_id"] for r in recs], [out["run_id"]] * 2)
 
     def test_applies_reference_class_correction(self):
-        # 5 done backend-api records at ratio actual/pert = 2.0
+        # actual/pert = 2.0 の完了済み backend-api レコードが5件。
         self.write_done([
             _done_record(i, tags=["auth"], actual=20.0) for i in range(5)
         ])
@@ -694,7 +693,7 @@ class TestPipeline(HistoryBase):
         self.assertEqual(t["correction"]["ratio_p50"], 2.0)
         self.assertEqual(t["m"], 16.0)   # 8 * 2.0
         self.assertEqual(t["p"], 32.0)   # 16 * 2.0
-        # corrected values are what got persisted
+        # 補正後の値が永続化される。
         rec = json.loads(self.raw_lines()[5])
         self.assertEqual(rec["m"], 16.0)
 
@@ -751,8 +750,8 @@ class TestPipeline(HistoryBase):
         self.assertFalse(os.path.exists(self.path))
 
     def test_reference_class_default_max_anchors_is_three(self):
-        # 5 tag-matched done records: reference-class should return only 3
-        # anchors by default, and none of the compacted fields o/m/p.
+        # タグ一致の完了済みレコードが5件ある。reference-class はデフォルトで
+        # アンカーを3件だけ返し、縮約された o/m/p フィールドは返さない。
         self.write_done([
             _done_record(i, tags=["auth"], date=f"2026-06-0{i + 1}")
             for i in range(5)

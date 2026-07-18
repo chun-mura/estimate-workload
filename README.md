@@ -1,48 +1,38 @@
-# estimate — effort estimation plugin for Claude Code
+# estimate — Claude Code 用の工数見積もりプラグイン
 
-`estimate` turns a spec, an issue, or a short description of upcoming work into
-a defensible effort estimate. It decomposes the work into a WBS of leaf tasks,
-assigns each an optimistic/most-likely/pessimistic (3-point) range, aggregates
-the ranges with Monte Carlo simulation, and anchors both the ranges and the
-final numbers against your own team's history via reference-class forecasting.
-The result is a P50 (planning) and P80 (commitment) figure — never a single
-made-up number.
+`estimate` は、仕様書、Issue、または予定作業の短い説明から、根拠のある工数見積もりを作成します。作業を WBS の末端タスクへ分解し、各タスクに楽観・最頻・悲観（3点）の範囲を設定して、モンテカルロシミュレーションで集計します。さらに、参照クラス予測により、範囲と最終的な数値をチーム固有の履歴に照らして補正します。
 
-The estimate gets better the more you use it. After work finishes, you record
-actual hours per task; those actuals become anchors and bias-correction data
-for the next estimate in the same category. There is no cold-start requirement
-to start using it, but accuracy improves once a few similar tasks have real
-actuals attached.
+結果は、単なる作り物の一点見積もりではなく、P50（計画用）と P80（コミット用）の値です。
 
-## Install
+利用するほど見積もりは改善します。作業完了後、タスクごとの実績時間を記録すると、その実績は同じカテゴリにおける次回見積もりのアンカーとバイアス補正データになります。利用開始時に履歴は不要ですが、似た作業の実績が蓄積されるほど精度は向上します。
 
-```
+## インストール
+
+```text
 /plugin marketplace add chun-mura/estimate-workload
 /plugin install estimate@estimate-workload
 ```
 
-To update later, refresh the marketplace listing and reload:
+後から更新する場合は、マーケットプレイス一覧を更新して再読み込みします。
 
-```
+```text
 /plugin marketplace update estimate-workload
 /reload-plugins
 ```
 
-New versions are picked up when `version` in `.claude-plugin/plugin.json` is
-bumped.
+`.claude-plugin/plugin.json` の `version` を更新すると、新しいバージョンが取得されます。
 
-For local development, run Claude Code with the plugin directory mounted
-directly — no marketplace needed:
+ローカル開発では、マーケットプレイスを経由せず、プラグインディレクトリを直接マウントして Claude Code を実行します。
 
 ```bash
 claude --plugin-dir .
 ```
 
-## Usage
+## 使い方
 
-1. Produce an estimate from a spec, issue, or free-text description:
+1. 仕様書、Issue、または自由記述から見積もりを作成します。
 
-   ```
+   ```text
    /estimate:new --mode quality docs/spec.md docs/tasks.md
    /estimate:new --mode economy docs/spec.md docs/tasks.md
    /estimate:new --mode quality --ai-view docs/spec.md docs/tasks.md
@@ -50,98 +40,44 @@ claude --plugin-dir .
    /estimate:new docs/04_詳細設計/A-AR-001_自動返信設定画面_補足文言.md
    ```
 
-   This reads the input, dispatches the analysis selected by the mode, builds the WBS,
-   assigns and corrects 3-point ranges, runs the simulation, writes a report
-   under `docs/estimates/`, and prints the `run_id` you'll need next. Every
-   report follows one fixed structure
-   (`skills/new/references/report-template.md`), so reports are comparable
-   run to run. When a source filename begins with a design ID such as
-   `A-AR-001_`, the report filename is standardized as
-   `YYYY-MM-DD-a-ar-001-<work-name>.md`. Use `--id a-ar-001` to set or
-   override the ID when it cannot be derived from the source filename.
+   入力を読み込み、モードに応じた分析を実行し、WBS を作成して3点見積もりを設定・補正します。その後、シミュレーションを実行し、`docs/estimates/` 配下へレポートを保存して、次の手順で必要な `run_id` を表示します。すべてのレポートは固定構造（`skills/new/references/report-template.md`）に従うため、実行ごとに比較できます。入力ファイル名が `A-AR-001_` のような設計 ID で始まる場合、レポート名は `YYYY-MM-DD-a-ar-001-<work-name>.md` に統一されます。ファイル名から ID を取得できない場合や上書きしたい場合は、`--id a-ar-001` を指定してください。
 
-   One invocation is one related-task batch. In `quality` mode, requirement
-   and repository analysis run once for the full batch. In `economy` mode,
-   only requirement analysis runs and code impact is marked unverified. Put
-   fifteen related tasks in one invocation to avoid repeating shared
-   analysis; fifteen independent commands remain fifteen separate batches.
+   1回の実行は、関連するタスク群1件分です。`quality` モードでは、要件とリポジトリの分析をタスク群全体に対して一度だけ行います。`economy` モードでは要件分析のみを実行し、コード影響は未検証として扱います。共有分析を繰り返さないため、関連する15件のタスクは1回の実行にまとめてください。独立した15件のコマンドは、15個の別タスク群として扱われます。
 
-2. After the work is done, record actual hours against that run:
+2. 作業が完了したら、その実行に実績時間を記録します。
 
-   ```
+   ```text
    /estimate:record <run_id>
    ```
 
-   This writes actuals back into history and prints a calibration summary
-   (estimate vs. actual bias, per-category ratios).
+   実績を履歴へ書き戻し、キャリブレーションの要約（見積もりと実績のバイアス、カテゴリごとの比率）を表示します。
 
-## Data & privacy
+## データとプライバシー
 
-The plugin stores project-local data under `.estimate/`. Task estimates and
-actuals live in `.estimate/history.jsonl`, the only persistent estimate
-artifact. Nothing is sent anywhere else.
+プラグインはプロジェクトローカルの `.estimate/` 配下にデータを保存します。タスクの見積もりと実績は、唯一の永続見積もり成果物である `.estimate/history.jsonl` に保存されます。ほかの場所へデータは送信されません。
 
-`history.jsonl` stores one estimated or completed task record per line and is
-only written through `append-history` and `update-actual`. The command returns
-simulation metadata for the current report; that metadata is not saved as a
-separate estimate artifact.
+`history.jsonl` には見積もり済みまたは完了済みのタスクレコードを1行ずつ保存し、書き込みは `append-history` と `update-actual` からだけ行われます。コマンドは現在のレポート用にシミュレーションメタデータを返しますが、これは別の見積もり成果物として保存されません。
 
-Choose the repository policy that fits your project. Commit
-`.estimate/history.jsonl` to share calibration data with the team, or ignore
-it when estimate data should remain local. Team members benefit from shared
-anchors and corrections only when `history.jsonl` is shared.
+プロジェクトに合ったリポジトリ運用を選んでください。チームでキャリブレーションデータを共有するなら `.estimate/history.jsonl` をコミットし、見積もりデータをローカルに留めるなら無視します。`history.jsonl` を共有した場合にのみ、チームメンバーは共有アンカーと補正の恩恵を受けられます。
 
-Run ids embed a timestamp and slug and are de-duplicated only against the
-local history file. If two clones estimate work with the same slug in the same
-second, a later git merge can end up with duplicate run ids — rare, but worth
-checking for when merging shared history.
+実行 ID にはタイムスタンプとスラッグが含まれ、ローカル履歴ファイル内でのみ重複排除されます。同じスラッグの作業を同一秒に別のクローンで見積もると、後の Git マージで実行 ID が重複する可能性があります。まれですが、共有履歴をマージする際に確認してください。
 
-## The two effort views
+## 2つの工数ビュー
 
-Every report shows two totals, each as P50 and P80, in both hours and
-person-days (8 hours/day by default; override with `hours_per_day` in
-`.estimate/config.json`):
+すべてのレポートは、既定では1人日を8時間として（`.estimate/config.json` の `hours_per_day` で変更可能）、時間と人日それぞれで P50 と P80 の2種類の合計を示します。
 
-- **Traditional effort** — the simulated totals as estimated, with no
-  adjustment for AI assistance.
-- **AI-assisted effort** — the same tasks scaled by a per-category factor
-  before simulation. Factors come from your own recorded history once a
-  category has at least 3 AI-assisted and 3 non-assisted completed actuals;
-  until then, built-in defaults are used. The report states which source each
-  factor came from.
+- **従来型工数** — AI支援による調整をせず、見積もりどおりにシミュレーションした合計です。
+- **AI支援工数** — カテゴリ別の係数でタスクを調整してからシミュレーションした合計です。各カテゴリで AI支援あり・なしの完了実績がそれぞれ3件以上になると、係数は記録済みの履歴から求めます。それまでは組み込みの既定値を使います。レポートには各係数の出所を記載します。
 
-**P50** is the median outcome — as likely to be exceeded as not. Use it for
-internal planning. **P80** is a more conservative figure that the true effort
-should undershoot 80% of the time. Use it for commitments and external quotes.
-Neither number is the sum of the "most likely" values — both come out of the
-Monte Carlo simulation over the full O/M/P ranges.
+**P50** は中央値であり、超過する可能性と超過しない可能性が同程度の値です。社内計画に使います。**P80** は実際の工数が80%の確率で下回る、より保守的な値です。コミットや対外見積もりに使います。どちらも「最頻」値の合計ではなく、完全な O/M/P 範囲を対象としたモンテカルロシミュレーションの結果です。
 
-## v1 limits
+## v1 の制約
 
-- **Fixed category taxonomy.** Tasks are classified into a small, built-in set
-  of categories (see `skills/estimation-methodology/references/category-taxonomy.md`).
-  There's no way to add custom categories yet.
-- **No hooks, no MCP.** The plugin is skills, an agent-backed workflow, and a
-  standalone calculation script — it doesn't register any Claude Code hooks or
-  MCP servers.
+- **固定カテゴリ体系。** タスクは少数の組み込みカテゴリに分類されます（`skills/estimation-methodology/references/category-taxonomy.md` を参照）。現時点では独自カテゴリを追加できません。
+- **フックと MCP は未対応。** プラグインはスキル、エージェント主体のワークフロー、独立した計算スクリプトで構成され、Claude Code のフックや MCP サーバーは登録しません。
 
-## Versioning
+## バージョニング
 
-**Any change to a plugin asset — `scripts/`, `skills/`, `agents/` — bumps
-`.claude-plugin/plugin.json`'s `version` and gets a CHANGELOG entry in the
-same commit or PR.** Content changing while the version stays put is
-indistinguishable, to a plugin manager comparing versions, from nothing
-having changed at all: a cached install can keep running stale code
-indefinitely with no signal that a fix landed upstream. This happened in
-practice — `version` sat at `0.1.0` from the initial scaffold through several
-behavior-changing fixes, until a cached 0.1.0 install kept producing
-estimates with a point-estimate formula that had already been corrected in
-this repo.
+**`scripts/`、`skills/`、`agents/` のいずれかのプラグイン資産を変更した場合は、同じコミットまたは PR で `.claude-plugin/plugin.json` の `version` を更新し、CHANGELOG に記載してください。** バージョンを据え置いたまま内容だけを変えても、バージョンを比較するプラグインマネージャーには未変更と区別できません。そのため、キャッシュ済みのインストールが修正済みのコードを取得せず、古い状態のまま実行され続ける可能性があります。実際に、初期スキャフォールドから複数の挙動変更を経ても `version` は `0.1.0` のままであり、キャッシュ済みの 0.1.0 が、上流で修正済みの点見積もり式を使い続けたことがあります。
 
-The plugin follows semver (`.claude-plugin/plugin.json`). History records carry
-a `schema_version`; readers never rewrite the file and skip records with an
-unknown `schema_version`, reporting a warning instead of failing. Records
-written by plugin 0.1.x carry `schema_version: 1`, whose `pert` field was
-computed with a formula that does not match the simulation model; current
-readers exclude them from anchors and calibration rather than mixing
-incompatible baselines.
+プラグインはセマンティックバージョニング（`.claude-plugin/plugin.json`）に従います。履歴レコードには `schema_version` があり、リーダーはファイルを書き換えず、未知の `schema_version` を持つレコードは失敗せず警告付きでスキップします。プラグイン 0.1.x が書き込んだレコードの `schema_version: 1` にある `pert` フィールドは、シミュレーションモデルと一致しない式で計算されています。そのため、現行リーダーは互換性のない基準を混在させず、アンカーとキャリブレーションから除外します。
