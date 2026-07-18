@@ -237,7 +237,7 @@ def _validated_analysis(payload, command):
         raise CalcError(f"{command}: 'analysis' must be an object")
     mode = analysis.get("mode")
     agents = analysis.get("agents")
-    if mode not in ANALYSIS_MODES:
+    if not isinstance(mode, str) or mode not in ANALYSIS_MODES:
         raise CalcError(
             f"{command}: 'analysis.mode' must be one of {sorted(ANALYSIS_MODES)}"
         )
