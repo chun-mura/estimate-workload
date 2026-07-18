@@ -50,6 +50,15 @@ expected 8h" is stronger evidence than intuition.
 Unanswered scoping questions do not block the estimate: record each one as an
 assumption and widen P for the affected tasks.
 
+## Analysis mode
+
+`quality` mode uses both the requirement and codebase analyses. `economy` mode
+uses requirement analysis only: do not run or substitute a codebase scan. For
+every code-affecting task in economy mode, widen raw P before pipeline
+correction to cover unverified code impact. Economy estimates cannot claim
+evidence of code coverage, hidden coupling, integration points, or repository
+impact.
+
 ## Reference-class procedure
 
 1. Before assigning O/M/P, call `reference-class` with each task's

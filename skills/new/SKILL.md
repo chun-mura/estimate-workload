@@ -17,34 +17,57 @@ run-summary failure inside `pipeline` described in step 7.
 
 Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
 
+Mode: optionally begin $ARGUMENTS with exactly `--mode quality` or
+`--mode economy`; remove that pair before treating the remaining arguments as
+sources. More than one `--mode`, a missing value, or any other value is an
+input error: stop before intake, agent dispatch, or CALC. With no mode flag,
+obtain a mode choice in step 2; do not select a mode by default.
+
 ## Steps
 
-1. **Intake.** Check every provided path exists and is readable (a single `ls`
-   is enough). Do NOT read document contents into this context — the
+1. **Mode-aware intake.** Validate and remove the optional leading mode pair
+   exactly as the Mode contract requires. Then check every remaining provided
+   path exists and is readable (a single `ls` is enough), without reading its
+   contents. Do NOT read document contents into this context — the
    spec-analyzer reads them in full in step 3; reading them twice wastes
    context. For each unreadable or missing path: tell the user, treat it as
    not provided, and carry the gap into step 4.
-2. **AI view.** ALWAYS ask, with the AskUserQuestion tool, whether to include
-   the AI-assisted effort view (unless the request already states it
-   explicitly). If the question goes unanswered, include the view (current
-   default behavior). When the view is included, read
+2. **Mode and AI view.** When no explicit mode exists, make exactly one
+   AskUserQuestion call that asks both the `quality` versus `economy` mode and
+   whether to include the AI-assisted effort view. If the mode is unanswered,
+   stop and request it; do not choose a default. If the AI-view answer is
+   unanswered, include it (the existing default behavior). With an explicit
+   mode, ask only whether to include the AI-assisted view unless the request
+   already states it explicitly. When the view is included, read
    `references/ai-assistance-factors.md` now.
-3. **Parallel analysis.** In ONE message dispatch both agents:
-   - `estimate:spec-analyzer` with all requirement sources.
-   - `estimate:code-analyzer` with the change description — SKIP for
-     greenfield (no repo/code).
-   If an agent fails (error, timeout, output not matching its JSON contract),
-   continue with the other's output, record the failure under Risks, and lower
-   the stated confidence. Never silently proceed.
-4. **Gap check.** From the agents' `open_questions` and uncertainty notes plus
-   any intake gaps: if critical information is missing (scope boundary,
-   definition of done, non-functional constraints), ask AT MOST 5 questions in
-   one AskUserQuestion call. Skip this step entirely when nothing critical is
-   missing. Record every unanswered gap as an assumption; assumptions widen P
-   in step 6.
-5. **WBS.** Merge per the methodology: spec view defines WHAT, code view
-   defines WHERE/HOW HARD (code view wins on difficulty). Produce leaf tasks
-   (0.5–3 person-days) each with category (fixed taxonomy) and tags.
+3. **Selected analysis.** Dispatch analyzers once per estimate invocation,
+   with the full batch of requirement sources; never dispatch an analyzer in a
+   loop over WBS tasks.
+   - For `quality`, dispatch `estimate:spec-analyzer` and
+     `estimate:code-analyzer` in ONE message, once each.
+   - For `economy`, dispatch only `estimate:spec-analyzer` once, and
+     explicitly prohibit any codebase scan or ad-hoc repository scan.
+   Record only successful analyzer names in `analysis.agents`. In `quality`
+   mode, if an agent fails (error, timeout, or output not matching its JSON
+   contract), continue with the other output, record the failure under Risks,
+   and lower the stated confidence. Never silently proceed. In `economy` mode,
+   stop if `spec-analyzer` fails. In `quality` mode, stop if both analyzers
+   fail because no valid non-empty `analysis.agents` provenance can be sent to
+   the pipeline.
+4. **Gap check.** After the selected analysis, use the agents'
+   `open_questions` and uncertainty notes plus any intake gaps: if critical
+   information is missing (scope boundary, definition of done, non-functional
+   constraints), ask AT MOST 5 questions in one AskUserQuestion call. Skip
+   this step entirely when nothing critical is missing. Record every
+   unanswered gap as an assumption; assumptions widen P in step 6. In
+   `economy` mode, for every code-affecting WBS task, add the fixed
+   code-impact assumption and risk required in step 8 and widen its raw P for
+   the unverified code impact before pipeline correction.
+5. **WBS.** Merge per the methodology: in `quality`, the spec view defines
+   WHAT and the code view defines WHERE/HOW HARD (the code view wins on
+   difficulty); in `economy`, use the spec view with the code-impact
+   assumptions from step 4. Produce leaf tasks (0.5–3 person-days) each with
+   category (fixed taxonomy) and tags.
 6. **Anchored 3-point estimates.** Call CALC `reference-class` (tasks with
    name/category/tags only) to fetch anchors. Assign raw O/M/P per task per
    the methodology, anchored when anchors exist, with a one-line rationale.
@@ -59,6 +82,12 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
      `references/ai-assistance-factors.md`) when the AI view is included.
    - `ai_view: false` when the user declined the view in step 2 (then
      `default_factor` is not needed).
+   - `analysis`: `{ "mode": "quality", "agents": ["spec-analyzer",
+     "code-analyzer"] }` when both quality analyzers succeed, or the same
+     object with only the successful quality analyzer; economy always uses
+     `{ "mode": "economy", "agents": ["spec-analyzer"] }`. Do not invent
+     agent names. This is required even when a quality-mode analyzer failed and
+     the result is partial.
    - `correlation` and `hours_per_day` from `.estimate/config.json` if
      present, and `size_boundaries` from the same file as `boundaries`;
      otherwise omit each so CALC owns the defaults (`0.3`, `8`, S/M/L).
@@ -87,6 +116,19 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
    a `run_id`, do NOT write a report at all — report the failure and stop.
    When `summary` returned `{"error": ...}`, keep the フッター section but
    replace its Machine-readable line with the error.
+   In `## 見積もり手法`, include exactly `- 解析モード: quality` or
+   `- 解析モード: economy`, copied from `pipeline.analysis.mode`. For an
+   `economy` report, include these exact entries in their designated sections:
+
+   ```markdown
+   ## 前提条件
+   - 実装複雑度はリポジトリ影響分析なしで見積もった。
+
+   ## リスク
+   | リスク | 影響 | 対応 |
+   |---|---|---|
+   | 隠れた結合・統合点・既存テスト範囲が未検証 | 工数がPを超過する可能性 | 実装前にコード影響分析を実施する |
+   ```
    The history file is authoritative; the report is a point-in-time snapshot
    and is never edited afterward.
 9. **Chat summary.** Do NOT repeat the full report in chat. Give a compact
