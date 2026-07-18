@@ -815,6 +815,61 @@ class TestPipeline(HistoryBase):
         payload["tasks"][0]["category"] = "nope"
         with self.assertRaisesRegex(ec.CalcError, "pipeline.*category"):
             ec.cmd_pipeline(payload)
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_rejects_empty_tasks(self):
+        with self.assertRaisesRegex(ec.CalcError, "tasks"):
+            ec.cmd_pipeline(self.payload(tasks=[]))
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_rejects_non_bool_ai_view(self):
+        with self.assertRaisesRegex(ec.CalcError, "ai_view"):
+            ec.cmd_pipeline(self.payload(ai_view="true"))
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_rejects_invalid_three_point_before_any_write(self):
+        payload = self.payload()
+        payload["tasks"][0]["o"] = 99  # o > m
+        with self.assertRaises(ec.CalcError):
+            ec.cmd_pipeline(payload)
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_reference_class_default_max_anchors_is_three(self):
+        # 5 tag-matched done records: reference-class should return only 3
+        # anchors by default, and none of the compacted fields o/m/p.
+        self.write_done([
+            _done_record(i, tags=["auth"], date=f"2026-06-0{i + 1}")
+            for i in range(5)
+        ])
+        out = ec.cmd_reference_class({
+            "history_path": self.path,
+            "tasks": [{"name": "t", "category": "backend-api", "tags": ["auth"]}],
+        })
+        anchors = out["tasks"][0]["anchors"]
+        self.assertEqual(len(anchors), 3)
+        for anchor in anchors:
+            self.assertEqual(
+                set(anchor.keys()),
+                {"task", "pert", "actual", "ai_assisted", "tags"},
+            )
+
+    def test_cli_real_path_writes_history_and_summary(self):
+        payload_path = os.path.join(self.dir.name, "pipeline_payload.json")
+        with open(payload_path, "w", encoding="utf-8") as fh:
+            json.dump(self.payload(), fh)
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            rc = ec.main(["pipeline", "--input", payload_path])
+        self.assertEqual(rc, 0)
+        out = json.loads(stdout.getvalue())
+        self.assertEqual(len(self.raw_lines()), 2)
+        summary_path = os.path.join(
+            os.path.dirname(self.path), "runs", out["run_id"] + ".json"
+        )
+        self.assertTrue(os.path.isfile(summary_path))
+        with open(summary_path, encoding="utf-8") as fh:
+            persisted = json.load(fh)
+        self.assertEqual(persisted["run_id"], out["run_id"])
 
     def test_is_registered_as_payload_command(self):
         self.assertIs(ec.PAYLOAD_COMMANDS["pipeline"], ec.cmd_pipeline)
