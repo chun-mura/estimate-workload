@@ -21,6 +21,16 @@ actuals attached.
 /plugin install estimate@estimate-workload
 ```
 
+To update later, refresh the marketplace listing and reload:
+
+```
+/plugin marketplace update estimate-workload
+/reload-plugins
+```
+
+New versions are picked up when `version` in `.claude-plugin/plugin.json` is
+bumped.
+
 For local development, run Claude Code with the plugin directory mounted
 directly — no marketplace needed:
 
@@ -59,8 +69,9 @@ Nothing is sent anywhere else.
 `history.jsonl` is one estimated or completed task record per line and is only
 written through `append-history` and `update-actual`. Run-summary JSON files
 contain the run id, generated time, S/M/L classification and boundaries,
-traditional and AI-assisted totals, and the persisted task ids/categories/PERT
-means. They are written atomically by `run-summary` and are not regenerated
+traditional and AI-assisted totals, and the persisted task ids/categories/
+expected means. They are written atomically by `run-summary` and are not
+regenerated
 when `/estimate:record` later stores actuals.
 
 Choose the repository policy that fits your project. Commit both
@@ -68,6 +79,11 @@ Choose the repository policy that fits your project. Commit both
 stable machine-readable estimates with the team, or ignore both when estimate
 data should remain local. Team members benefit from shared anchors and
 corrections only when `history.jsonl` is shared.
+
+Run ids embed a timestamp and slug and are de-duplicated only against the
+local history file. If two clones estimate work with the same slug in the same
+second, a later git merge can end up with duplicate run ids — rare, but worth
+checking for when merging shared history.
 
 ## The two effort views
 
@@ -103,6 +119,9 @@ Monte Carlo simulation over the full O/M/P ranges.
 The plugin follows semver (`.claude-plugin/plugin.json`). History records carry
 a `schema_version`; run summaries carry an independent `schema_version` so a
 breaking change to one format cannot silently change the other. Readers of
-history tolerate unknown newer versions and older records forward, so upgrading
-the plugin does not require discarding existing `.estimate/history.jsonl` data.
+history never rewrite the file and skip records with an unknown
+`schema_version`, reporting a warning instead of failing. Records written by
+plugin 0.1.x carry `schema_version: 1`, whose `pert` field was computed with a
+formula that does not match the simulation model; current readers exclude them
+from anchors and calibration rather than mixing incompatible baselines.
 Consumers of run summaries must check their schema version before parsing.

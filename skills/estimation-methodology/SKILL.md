@@ -33,16 +33,19 @@ description: Estimation methodology reference for the estimate plugin — WBS de
 For each leaf task assign hours as:
 
 - **O (optimistic):** everything goes right — you know the code, no rework,
-  no review friction. ~5th percentile.
+  no review friction. The simulation never samples below O: it is the hard
+  floor of the range, not a long-shot best case.
 - **M (most likely):** the single most probable outcome, including normal
   friction (one review round, small surprises).
 - **P (pessimistic):** serious-but-plausible trouble — hidden coupling, rework
-  after review, environment issues. ~95th percentile. NOT a catastrophe bound.
+  after review, environment issues. The simulation never samples above P, so
+  set it wide enough to cover serious trouble. Still NOT a catastrophe bound:
+  record catastrophic scenarios as risks, not in P.
 
 Write a one-line rationale per task naming the main complexity driver.
 When similar past tasks (anchors) are available, state O/M/P **relative to the
-anchors' actuals**, not from scratch: "similar task X took 6h against a PERT of
-8h" is stronger evidence than intuition.
+anchors' actuals**, not from scratch: "similar task X took 6h against an
+expected 8h" is stronger evidence than intuition.
 
 Unanswered scoping questions do not block the estimate: record each one as an
 assumption and widen P for the affected tasks.
@@ -58,6 +61,10 @@ assumption and widen P for the affected tasks.
    correction removes residual bias — do both.
 3. If correction is skipped (`insufficient_data`), say so in the report and
    note that ranges are uncorrected.
+4. Each correction states its `basis` (`category_and_tags` when enough
+   tag-matched records exist, else `category`) and carries `low_sample: true`
+   when backed by fewer than 10 records. Surface both in the report: a
+   low-sample correction is indicative, not authoritative.
 
 ## Aggregation
 
@@ -80,8 +87,9 @@ common project risk. Every report states the resolved correlation assumption.
 Report BOTH, clearly labeled (unless the user declined the AI-assisted view
 at intake — then report only the traditional view and say the AI-assisted
 view was skipped at the user's request):
-- **Traditional effort:** the simulated totals as-is, in hours and person-days
-  (default 8 h/day; honor `.estimate/config.json` `hours_per_day` if present).
+- **Traditional effort:** the simulated totals as-is, in hours and person-days.
+  Pass `hours_per_day` from `.estimate/config.json` (if present) to `simulate`
+  and report the returned `p50_days`/`p80_days` — never divide hours yourself.
 - **AI-assisted effort:** per-category multipliers applied to task hours before
   simulation. Use learned factors from `calibration` when a category has them;
   otherwise the defaults in `references/ai-assistance-factors.md`. State which

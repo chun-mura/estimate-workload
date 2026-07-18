@@ -51,10 +51,19 @@ class TestSimulate(unittest.TestCase):
         base.update(over)
         return base
 
-    def test_pert_means(self):
+    def test_task_means_match_sampled_triangular_distribution(self):
         out = ec.cmd_simulate(self.payload())
-        self.assertEqual(out["tasks"][0]["pert"], 8.67)
-        self.assertEqual(out["tasks"][1]["pert"], 4.0)
+        self.assertEqual(out["tasks"][0]["pert"], 9.33)  # (4+8+16)/3
+        self.assertEqual(out["tasks"][1]["pert"], 5.0)   # (2+3+10)/3
+
+    def test_task_mean_approximates_simulated_mean(self):
+        # The 'pert' point estimate and the Monte Carlo totals must come from
+        # the same distribution, or calibration ratios drift by construction.
+        out = ec.cmd_simulate({
+            "tasks": [{"name": "x", "o": 2, "m": 4, "p": 20}],
+            "trials": 50_000, "seed": 42, "correlation": 0,
+        })
+        self.assertAlmostEqual(out["tasks"][0]["pert"], out["total"]["mean"], delta=0.1)
 
     def test_seed_deterministic(self):
         a = ec.cmd_simulate(self.payload())
@@ -93,7 +102,7 @@ class TestSimulate(unittest.TestCase):
             {"tasks": [{"name": "x", "o": 4, "m": 8, "p": 16, "factor": 0.5}],
              "trials": 200, "seed": 7}
         )
-        self.assertEqual(out["tasks"][0]["pert"], 4.33)
+        self.assertEqual(out["tasks"][0]["pert"], 4.67)
         self.assertLessEqual(out["total"]["max"], 8)
 
     def test_rejects_bad_factor(self):
@@ -101,6 +110,24 @@ class TestSimulate(unittest.TestCase):
             ec.cmd_simulate(
                 {"tasks": [{"name": "x", "o": 4, "m": 8, "p": 16, "factor": 0}]}
             )
+
+    def test_person_days_use_default_hours_per_day(self):
+        out = ec.cmd_simulate(self.payload())
+        self.assertEqual(out["hours_per_day"], 8)
+        t = out["total"]
+        self.assertAlmostEqual(t["p50_days"], t["p50"] / 8, delta=0.01)
+        self.assertAlmostEqual(t["p80_days"], t["p80"] / 8, delta=0.01)
+
+    def test_person_days_honor_hours_per_day_override(self):
+        out = ec.cmd_simulate(self.payload(hours_per_day=6))
+        self.assertEqual(out["hours_per_day"], 6)
+        t = out["total"]
+        self.assertAlmostEqual(t["p80_days"], t["p80"] / 6, delta=0.01)
+
+    def test_rejects_invalid_hours_per_day(self):
+        for value in (0, -8, float("nan"), True, "8"):
+            with self.subTest(value=value), self.assertRaises(ec.CalcError):
+                ec.cmd_simulate(self.payload(hours_per_day=value))
 
     def test_default_and_explicit_correlation_are_reported(self):
         self.assertEqual(ec.cmd_simulate(self.payload())["correlation"], 0.3)
@@ -160,13 +187,13 @@ class TestAppendHistory(HistoryBase):
         out = self.append()
         self.assertEqual(out["appended"], 1)
         rec = json.loads(self.raw_lines()[0])
-        self.assertEqual(rec["schema_version"], 1)
+        self.assertEqual(rec["schema_version"], 2)
         self.assertEqual(rec["run_id"], out["run_id"])
         self.assertEqual(rec["id"], out["run_id"] + "-01")
         self.assertEqual(rec["status"], "estimated")
         self.assertIsNone(rec["actual"])
         self.assertIsNone(rec["ai_assisted"])
-        self.assertEqual(rec["pert"], 8.67)
+        self.assertEqual(rec["pert"], 9.33)
 
     def test_same_second_reruns_get_distinct_run_ids(self):
         a = self.append()
@@ -215,11 +242,23 @@ class TestReadHistory(HistoryBase):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         with open(self.path, "a", encoding="utf-8") as fh:
             fh.write("{not json\n")
-            fh.write(json.dumps({"schema_version": 1, "id": "x"}) + "\n")
+            fh.write(json.dumps({"schema_version": 2, "id": "x"}) + "\n")
         records, warnings = ec.read_history(self.path)
         self.assertEqual(len(records), 1)
         kinds = sorted(w["kind"] for w in warnings)
         self.assertEqual(kinds, ["parse_error", "schema_violation"])
+
+    def test_v1_records_skipped_with_warning(self):
+        # v1 'pert' was computed with a different formula; mixing it into
+        # calibration would corrupt the actual/pert ratios.
+        self.append()
+        rec = json.loads(self.raw_lines()[0])
+        rec["schema_version"] = 1
+        with open(self.path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec) + "\n")
+        records, warnings = ec.read_history(self.path)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(warnings[0]["kind"], "schema_violation")
 
     def test_future_schema_version_skipped_with_warning(self):
         self.append()
@@ -258,7 +297,6 @@ class TestRunSummary(HistoryBase):
         base = {
             "run_id": self.appended["run_id"],
             "history_path": self.path,
-            "output_dir": self.output_dir,
             "traditional": {"mean": 20.5, "p50": 20.1, "p80": 24.3},
             "ai_assisted": {"mean": 10.0, "p50": 9.8, "p80": 12.0},
         }
@@ -283,7 +321,7 @@ class TestRunSummary(HistoryBase):
         self.assertEqual(out["ai_assisted"], self.payload()["ai_assisted"])
         self.assertEqual(out["tasks"], [
             {"id": self.appended["run_id"] + "-01", "task": "Add endpoint",
-             "category": "backend-api", "pert": 8.67},
+             "category": "backend-api", "pert": 9.33},
             {"id": self.appended["run_id"] + "-02", "task": "Write guide",
              "category": "docs", "pert": 2.0},
         ])
@@ -327,26 +365,14 @@ class TestRunSummary(HistoryBase):
             os.path.join(self.output_dir, self.appended["run_id"] + ".json")
         ))
 
-    def test_rejects_output_directory_outside_history_project_runs_directory(self):
+    def test_unknown_output_dir_key_is_ignored(self):
+        # 'output_dir' was removed from the contract; a stale caller passing
+        # it must not redirect the summary away from .estimate/runs.
         external_dir = os.path.join(self.dir.name, "external", "runs")
-        with self.assertRaisesRegex(ec.CalcError, r"output_dir.*\.estimate/runs"):
-            ec.cmd_run_summary(self.payload(output_dir=external_dir))
+        ec.cmd_run_summary(self.payload(output_dir=external_dir))
         self.assertFalse(os.path.exists(external_dir))
-
-    def test_rejects_output_directory_path_traversal(self):
-        escaped_dir = os.path.join(self.output_dir, "..", "outside")
-        with self.assertRaisesRegex(ec.CalcError, r"output_dir.*\.estimate/runs"):
-            ec.cmd_run_summary(self.payload(output_dir=escaped_dir))
-        self.assertFalse(os.path.exists(os.path.join(
-            self.dir.name, ".estimate", "outside"
-        )))
-
-    def test_uses_default_output_directory_when_omitted(self):
-        payload = self.payload()
-        del payload["output_dir"]
-        ec.cmd_run_summary(payload)
         self.assertTrue(os.path.isfile(os.path.join(
-            self.dir.name, ".estimate", "runs", self.appended["run_id"] + ".json"
+            self.output_dir, self.appended["run_id"] + ".json"
         )))
 
     def test_rejects_missing_or_invalid_totals(self):
@@ -377,7 +403,6 @@ class TestRunSummary(HistoryBase):
         for override in (
             {"run_id": ""},
             {"history_path": None},
-            {"output_dir": ""},
         ):
             with self.subTest(override=override), self.assertRaises(ec.CalcError):
                 ec.cmd_run_summary(self.payload(**override))
@@ -458,7 +483,7 @@ class TestUpdateActual(HistoryBase):
 def _done_record(i, category="backend-api", tags=(), pert=10.0, actual=10.0,
                  ai=False, date="2026-06-01"):
     return {
-        "schema_version": 1, "run_id": f"r{i}", "id": f"r{i}-01", "date": date,
+        "schema_version": 2, "run_id": f"r{i}", "id": f"r{i}-01", "date": date,
         "task": f"past task {i}", "category": category, "tags": list(tags),
         "o": pert * 0.5, "m": pert, "p": pert * 2, "pert": pert,
         "actual": actual, "ai_assisted": ai, "status": "done",
@@ -521,7 +546,7 @@ class TestReferenceClass(HistoryBase):
         })
         self.assertEqual(out["tasks"][0]["anchors"], [])
 
-    def test_corrected_o_kept_below_corrected_m(self):
+    def test_corrected_o_gets_ratio_correction_and_stays_below_corrected_m(self):
         # actual/pert ratio 0.4 for all 5 records -> r50 = 0.4
         recs = [_done_record(i, pert=10.0, actual=4.0) for i in range(5)]
         self.write_done(recs)
@@ -532,8 +557,74 @@ class TestReferenceClass(HistoryBase):
         })
         corr = out["tasks"][0]["correction"]
         self.assertEqual(corr["corrected_m"], 3.2)
-        self.assertEqual(corr["corrected_o"], 3.2)
+        self.assertEqual(corr["corrected_o"], 1.6)  # 4 * 0.4
         self.assertLessEqual(corr["corrected_o"], corr["corrected_m"])
+
+    def test_correction_prefers_tag_matched_pool(self):
+        # 5 tag-matched records at ratio 2.0 vs 5 tagless ones at ratio 1.0:
+        # the correction must come from the tag-matched pool the anchors show.
+        recs = [_done_record(i, tags=["auth"], actual=20.0) for i in range(5)]
+        recs += [_done_record(i + 5, actual=10.0) for i in range(5)]
+        self.write_done(recs)
+        out = ec.cmd_reference_class({
+            "history_path": self.path,
+            "tasks": [{"name": "t", "category": "backend-api", "tags": ["auth"],
+                       "m": 8, "p": 16}],
+        })
+        corr = out["tasks"][0]["correction"]
+        self.assertEqual(corr["basis"], "category_and_tags")
+        self.assertEqual(corr["count"], 5)
+        self.assertEqual(corr["ratio_p50"], 2.0)
+
+    def test_correction_falls_back_to_category_when_tag_pool_small(self):
+        recs = [_done_record(i, actual=10.0) for i in range(5)]
+        recs.append(_done_record(9, tags=["auth"], actual=20.0))
+        self.write_done(recs)
+        out = ec.cmd_reference_class({
+            "history_path": self.path,
+            "tasks": [{"name": "t", "category": "backend-api", "tags": ["auth"],
+                       "m": 8, "p": 16}],
+        })
+        corr = out["tasks"][0]["correction"]
+        self.assertEqual(corr["basis"], "category")
+        self.assertEqual(corr["count"], 6)
+
+    def test_correction_flags_low_sample(self):
+        small = [_done_record(i, actual=10.0) for i in range(5)]
+        self.write_done(small)
+        out = ec.cmd_reference_class({
+            "history_path": self.path,
+            "tasks": [{"name": "t", "category": "backend-api", "tags": [],
+                       "m": 8, "p": 16}],
+        })
+        self.assertTrue(out["tasks"][0]["correction"]["low_sample"])
+
+    def test_correction_omits_low_sample_when_enough_records(self):
+        recs = [_done_record(i, actual=10.0) for i in range(10)]
+        self.write_done(recs)
+        out = ec.cmd_reference_class({
+            "history_path": self.path,
+            "tasks": [{"name": "t", "category": "backend-api", "tags": [],
+                       "m": 8, "p": 16}],
+        })
+        self.assertNotIn("low_sample", out["tasks"][0]["correction"])
+
+    def test_rejects_invalid_min_records_and_max_anchors(self):
+        self.write_done([_done_record(1)])
+        for override in (
+            {"min_records": 0},
+            {"min_records": "5"},
+            {"min_records": True},
+            {"max_anchors": -1},
+            {"max_anchors": 2.5},
+        ):
+            payload = {
+                "history_path": self.path,
+                "tasks": [{"name": "t", "category": "backend-api", "tags": []}],
+                **override,
+            }
+            with self.subTest(override=override), self.assertRaises(ec.CalcError):
+                ec.cmd_reference_class(payload)
 
     def test_missing_ai_assisted_key_does_not_raise(self):
         rec = _done_record(1)
@@ -566,6 +657,15 @@ class TestCalibration(TestReferenceClass):
         out = ec.cmd_calibration({"history_path": self.path})
         self.assertEqual(
             out["ai_assistance_factors"]["backend-api"]["factor"], 0.5
+        )
+        self.assertTrue(out["ai_assistance_factors"]["backend-api"]["low_sample"])
+
+    def test_low_sample_flag_reflects_record_count(self):
+        self.write_done([_done_record(i) for i in range(4)])
+        self.assertTrue(ec.cmd_calibration({"history_path": self.path})["low_sample"])
+        self.write_done([_done_record(i + 4) for i in range(6)])
+        self.assertNotIn(
+            "low_sample", ec.cmd_calibration({"history_path": self.path})
         )
 
     def test_ai_factor_absent_when_sparse(self):

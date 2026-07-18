@@ -1,5 +1,6 @@
 {
   "name": "estimate-workload",
+  "description": "Marketplace for the estimate plugin — effort estimation for Claude Code.",
   "owner": {
     "name": "chun-mura"
   },

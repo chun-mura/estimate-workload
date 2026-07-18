@@ -44,8 +44,9 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
    (`corrected_o`/`corrected_m`/`corrected_p`), use them.
    Where skipped, note "uncorrected (insufficient data: N similar records)".
 7. **Aggregate.** Build the CALC `simulate` payload with the final O/M/P
-   values. If `.estimate/config.json` contains `correlation`, add that value
-   to the payload; otherwise omit it so CALC owns the `0.3` default. Then build
+   values. If `.estimate/config.json` contains `correlation` or
+   `hours_per_day`, add those values to the payload; otherwise omit them so
+   CALC owns the defaults (`0.3`, `8`). Then build
    the AI-assisted view — SKIP this second call if the user declined it in
    step 2: call CALC `simulate` again with the same correlation
    override behavior and tasks plus a per-task `"factor"` — the category's
@@ -70,20 +71,22 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
    4. Write the report to `docs/estimates/YYYY-MM-DD-<slug>.md`. If writing
       fails, print the full report in chat instead — history is already saved.
 9. **Report.** In the conversation language. Must contain:
-   - WBS table: task, history id, category, O/M/P, PERT mean (from
-     `simulate`), rationale. (`/estimate:record` reads ids and PERT means
-     back from this table — keep the columns.)
+   - WBS table: task, history id, category, O/M/P, expected mean (the `pert`
+     value from `simulate`), rationale. (`/estimate:record` reads ids and
+     expected means back from this table — keep the columns.)
    - Legend: one line defining P50 ("as likely over as under; use for internal
      planning") and P80 ("commitment-grade; use for external quotes").
    - Method note: "tasks correlated at rho = X via common-cause factor",
      using the correlation value returned by CALC `simulate`.
-   - Traditional totals: P50 and P80 in hours AND person-days (8 h/day unless
-     `.estimate/config.json` sets `hours_per_day`).
+   - Traditional totals: P50 and P80 in hours AND person-days, using the
+     `p50_days`/`p80_days` returned by `simulate` — never divide hours
+     yourself.
    - AI-assisted totals: P50/P80, with each factor's source (learned/default).
      When declined in step 2, replace this section with one line: "AI-assisted
      view: skipped at the user's request."
    - Assumptions, Risks (including any agent failure), Out of scope.
-   - Calibration note: which corrections applied, which were skipped.
+   - Calibration note: which corrections applied (with each one's `basis` and
+     a caveat when `low_sample` is set), which were skipped.
    - Footer, only when `run-summary` succeeded: "Machine-readable summary:
      `.estimate/runs/<run_id>.json`".
    - Footer: "Record actuals when done: `/estimate:record <run_id>`".

@@ -12,8 +12,8 @@ Input: "Add OAuth login to our Express app" + repo with existing session auth.
    - "Add login button + redirect flow" — frontend-ui, tags [auth]
    - "Integration tests for login flows" — test-only, tags [auth]
 4. First reference-class call (category/tags only) returns anchors, e.g. a past
-   backend-api [auth] task: pert 8 h → actual 11 h. Estimate the callback task
-   relative to that: O=6, M=10, P=20.
+   backend-api [auth] task: expected 8 h → actual 11 h. Estimate the callback
+   task relative to that: O=6, M=10, P=20.
 5. Second reference-class call (with m, p) returns ratio_p50 1.2, ratio_p80 1.6
    → corrected_m 12, corrected_p 32. Use corrected values.
 6. simulate over all corrected tasks → total p50 34 h, p80 46 h.

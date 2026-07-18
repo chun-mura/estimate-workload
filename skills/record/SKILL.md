@@ -31,6 +31,7 @@ Input: $ARGUMENTS (optionally a run_id).
    error usually means a typo in the run_id.
 4. **Calibrate.** CALC `calibration` and present, in the conversation
    language: overall bias (under/over-estimating), ratio_p50, per-category
-   ratios, and any learned AI-assistance factors now active. Encourage
+   ratios, and any learned AI-assistance factors now active. Where the output
+   carries `low_sample: true`, say the figure is indicative only. Encourage
    recording actuals every run — corrections activate at 5 similar completed
-   records per category.
+   records per category and firm up around 10.

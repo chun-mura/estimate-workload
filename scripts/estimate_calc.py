@@ -9,7 +9,9 @@ file output.
 Contract: `estimate_calc.py <subcommand> --input <file|->` reads a JSON
 payload, writes a JSON result to stdout, and on error writes
 {"error": "..."} to stderr and exits 1. `update-actual` takes flags
-instead of a payload.
+instead of a payload. Argparse-level errors (missing/unknown flags or
+subcommands) are outside this contract: argparse prints plain text to
+stderr and exits 2.
 """
 import argparse
 import json
@@ -22,13 +24,18 @@ import tempfile
 import time
 from datetime import datetime
 
-SCHEMA_VERSION = 1
-KNOWN_SCHEMA_VERSIONS = {1}
+SCHEMA_VERSION = 2
+# v1 records store 'pert' computed as beta-PERT (o+4m+p)/6, which does not
+# match the triangular distribution cmd_simulate samples; mixing bases would
+# corrupt calibration ratios, so v1 records are excluded (with warnings).
+KNOWN_SCHEMA_VERSIONS = {2}
 CATEGORIES = {"backend-api", "frontend-ui", "db-migration", "infra", "test-only", "docs"}
 DEFAULT_TRIALS = 10_000
 DEFAULT_CORRELATION = 0.3
 RUN_SCHEMA_VERSION = 1
 DEFAULT_SIZE_BOUNDARIES = {"s_max_hours": 4, "m_max_hours": 16}
+DEFAULT_HOURS_PER_DAY = 8
+LOW_SAMPLE_THRESHOLD = 10
 
 
 class CalcError(Exception):
@@ -48,8 +55,14 @@ def percentile(values, q):
     return xs[lo] + (xs[hi] - xs[lo]) * (pos - lo)
 
 
-def pert_mean(o, m, p):
-    return round((o + 4 * m + p) / 6.0, 2)
+def triangular_mean(o, m, p):
+    """Mean of Triangular(o, m, p) — the distribution cmd_simulate samples.
+
+    Stored under the history field named 'pert' (name kept for schema
+    stability); it must stay consistent with the simulation model because
+    calibration divides actuals by it.
+    """
+    return round((o + m + p) / 3.0, 2)
 
 
 def _is_number(v):
@@ -95,6 +108,9 @@ def cmd_simulate(payload):
     correlation = payload.get("correlation", DEFAULT_CORRELATION)
     if not _is_number(correlation) or not 0 <= correlation <= 1:
         raise CalcError("simulate: 'correlation' must be a finite number in [0, 1]")
+    hours_per_day = payload.get("hours_per_day", DEFAULT_HOURS_PER_DAY)
+    if not _is_number(hours_per_day) or hours_per_day <= 0:
+        raise CalcError("simulate: 'hours_per_day' must be a positive finite number")
 
     rng = random.Random(payload.get("seed"))
     common_weight = math.sqrt(correlation)
@@ -111,20 +127,25 @@ def cmd_simulate(payload):
                 u = 0.5 * (1 + math.erf(z / math.sqrt(2)))
                 total += triangular_inv_cdf(u, t["o"], t["m"], t["p"])
         totals.append(total)
+    p50 = percentile(totals, 50)
+    p80 = percentile(totals, 80)
     return {
         "tasks": [
-            {"name": t["name"], "pert": pert_mean(t["o"], t["m"], t["p"])}
+            {"name": t["name"], "pert": triangular_mean(t["o"], t["m"], t["p"])}
             for t in scaled
         ],
         "total": {
             "mean": round(statistics.fmean(totals), 2),
-            "p50": round(percentile(totals, 50), 2),
-            "p80": round(percentile(totals, 80), 2),
+            "p50": round(p50, 2),
+            "p80": round(p80, 2),
+            "p50_days": round(p50 / hours_per_day, 2),
+            "p80_days": round(p80 / hours_per_day, 2),
             "min": round(min(totals), 2),
             "max": round(max(totals), 2),
         },
         "trials": trials,
         "correlation": correlation,
+        "hours_per_day": hours_per_day,
     }
 
 
@@ -236,27 +257,11 @@ def cmd_run_summary(payload):
     if any(separator in run_id for separator in (os.sep, os.altsep) if separator):
         raise CalcError("run-summary: 'run_id' must not contain a path separator")
     history_path = _required_string(payload, "history_path", "run-summary")
-    output_dir = payload.get("output_dir")
-    if output_dir is not None and (not isinstance(output_dir, str) or not output_dir):
-        raise CalcError("run-summary: 'output_dir' must be a non-empty string")
-    allowed_output_dir = os.path.realpath(os.path.join(
+    # The summary always lands next to the history file; there is no
+    # caller-controlled output path.
+    output_dir = os.path.realpath(os.path.join(
         os.path.dirname(os.path.abspath(history_path)), "runs"
     ))
-    if output_dir is None:
-        requested_output_dir = allowed_output_dir
-    else:
-        project_dir = os.path.dirname(os.path.dirname(
-            os.path.abspath(history_path)
-        ))
-        requested_output_dir = os.path.realpath(os.path.abspath(
-            output_dir if os.path.isabs(output_dir) else os.path.join(
-                project_dir, output_dir
-            )
-        ))
-    if requested_output_dir != allowed_output_dir:
-        raise CalcError(
-            "run-summary: 'output_dir' must be the history project's .estimate/runs"
-        )
     traditional = _validated_totals(payload, "traditional")
     ai_assisted = _validated_totals(payload, "ai_assisted", allow_null=True)
     boundaries = _merged_size_boundaries(payload)
@@ -296,10 +301,10 @@ def cmd_run_summary(payload):
         ],
     }
 
-    os.makedirs(allowed_output_dir, exist_ok=True)
-    output_path = os.path.join(allowed_output_dir, f"{run_id}.json")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"{run_id}.json")
     fd, tmp = tempfile.mkstemp(
-        dir=allowed_output_dir, prefix=".run-", suffix=".tmp"
+        dir=output_dir, prefix=".run-", suffix=".tmp"
     )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -378,7 +383,7 @@ def cmd_append_history(payload):
                 "o": t["o"],
                 "m": t["m"],
                 "p": t["p"],
-                "pert": pert_mean(t["o"], t["m"], t["p"]),
+                "pert": triangular_mean(t["o"], t["m"], t["p"]),
                 "actual": None,
                 "ai_assisted": None,
                 "status": "estimated",
@@ -464,6 +469,9 @@ def cmd_reference_class(payload):
         raise CalcError("reference-class: 'tasks' must be a non-empty list")
     min_records = payload.get("min_records", 5)
     max_anchors = payload.get("max_anchors", 5)
+    for key, value in (("min_records", min_records), ("max_anchors", max_anchors)):
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            raise CalcError(f"reference-class: '{key}' must be a positive integer")
     records, warnings = read_history(path)
     done = [
         r for r in records
@@ -489,7 +497,15 @@ def cmd_reference_class(payload):
             for r in ranked[:max_anchors]
         ]
         entry = {"name": t.get("name", ""), "anchors": anchors}
-        ratios = [r["actual"] / r["pert"] for r in same_cat]
+        # Correct from the same population the anchors advertise: prefer
+        # tag-overlapping records, fall back to the whole category only when
+        # the tag-matched pool is too small to correct from.
+        tag_matched = [r for r in same_cat if tags & set(r["tags"])] if tags else []
+        if len(tag_matched) >= min_records:
+            pool, basis = tag_matched, "category_and_tags"
+        else:
+            pool, basis = same_cat, "category"
+        ratios = [r["actual"] / r["pert"] for r in pool]
         if len(ratios) < min_records:
             entry["correction"] = {"skipped": "insufficient_data", "count": len(ratios)}
         else:
@@ -497,14 +513,19 @@ def cmd_reference_class(payload):
             r80 = percentile(ratios, 80)
             correction = {
                 "count": len(ratios),
+                "basis": basis,
                 "ratio_p50": round(r50, 2),
                 "ratio_p80": round(r80, 2),
             }
+            if len(ratios) < LOW_SAMPLE_THRESHOLD:
+                correction["low_sample"] = True
             if _is_number(t.get("m")):
                 corrected_m = t["m"] * r50
                 correction["corrected_m"] = round(corrected_m, 2)
                 if _is_number(t.get("o")):
-                    correction["corrected_o"] = round(min(t["o"], corrected_m), 2)
+                    correction["corrected_o"] = round(
+                        min(t["o"] * r50, corrected_m), 2
+                    )
             if _is_number(t.get("p")):
                 correction["corrected_p"] = round(t["p"] * r80, 2)
             entry["correction"] = correction
@@ -547,7 +568,9 @@ def cmd_calibration(payload):
                 "ai_count": len(ai),
                 "human_count": len(human),
             }
-    return {
+            if min(len(ai), len(human)) < LOW_SAMPLE_THRESHOLD:
+                ai_factors[cat]["low_sample"] = True
+    result = {
         "count": len(done),
         "ratio_p50": round(p50, 2),
         "ratio_mean": round(statistics.fmean(ratios), 2),
@@ -559,6 +582,9 @@ def cmd_calibration(payload):
         "ai_assistance_factors": ai_factors,
         "warnings": warnings,
     }
+    if len(done) < LOW_SAMPLE_THRESHOLD:
+        result["low_sample"] = True
+    return result
 
 
 def cmd_distribute(payload):
