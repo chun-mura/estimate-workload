@@ -2,9 +2,8 @@
 """All statistics and history-file I/O for the estimate plugin.
 
 Skills and agents must never do arithmetic or edit `.estimate/history.jsonl`
-or `.estimate/runs/` directly; this script is the single choke point for math,
-schema validation, ID generation, locking, version handling, and run-summary
-file output.
+directly; this script is the single choke point for math, schema validation,
+ID generation, locking, and version handling.
 
 Contract: `estimate_calc.py <subcommand> --input <file|->` reads a JSON
 payload, writes a JSON result to stdout, and on error writes
@@ -32,14 +31,11 @@ KNOWN_SCHEMA_VERSIONS = {2}
 CATEGORIES = {"backend-api", "frontend-ui", "db-migration", "infra", "test-only", "docs"}
 DEFAULT_TRIALS = 10_000
 DEFAULT_CORRELATION = 0.3
-RUN_SCHEMA_VERSION = 3
 ANALYSIS_MODES = {"quality", "economy"}
 ANALYSIS_AGENTS = {"spec-analyzer", "code-analyzer"}
 
-# The sampling model cmd_simulate implements. Recorded in every run summary so
-# a reader can tell which distribution produced the percentiles.
+# The sampling model cmd_simulate implements.
 DISTRIBUTION = "triangular"
-DEFAULT_SIZE_BOUNDARIES = {"s_max_hours": 4, "m_max_hours": 16}
 DEFAULT_HOURS_PER_DAY = 8
 LOW_SAMPLE_THRESHOLD = 10
 
@@ -258,127 +254,6 @@ def _validated_analysis(payload, command):
             f"{command}: economy analysis requires ['spec-analyzer']"
         )
     return {"mode": mode, "agents": agents}
-
-
-def _validated_totals(payload, key, allow_null=False):
-    totals = payload.get(key)
-    if allow_null and totals is None:
-        return None
-    if not isinstance(totals, dict):
-        expected = "null or an object" if allow_null else "an object"
-        raise CalcError(f"run-summary: '{key}' must be {expected}")
-    result = {}
-    for metric in ("mean", "p50", "p80"):
-        value = totals.get(metric)
-        if not _is_number(value) or value < 0:
-            raise CalcError(
-                f"run-summary: '{key}.{metric}' must be a non-negative finite number"
-            )
-        result[metric] = value
-    # Person-days are carried through when the caller has them, so readers of
-    # the summary never have to divide hours themselves.
-    for metric in ("p50_days", "p80_days"):
-        value = totals.get(metric)
-        if value is None:
-            continue
-        if not _is_number(value) or value < 0:
-            raise CalcError(
-                f"run-summary: '{key}.{metric}' must be a non-negative finite number"
-            )
-        result[metric] = value
-    return result
-
-
-def _merged_size_boundaries(payload):
-    overrides = payload.get("boundaries", {})
-    if not isinstance(overrides, dict):
-        raise CalcError("run-summary: 'boundaries' must be an object")
-    boundaries = {
-        key: overrides.get(key, default)
-        for key, default in DEFAULT_SIZE_BOUNDARIES.items()
-    }
-    for key, value in boundaries.items():
-        if not _is_number(value) or value <= 0:
-            raise CalcError(
-                f"run-summary: 'boundaries.{key}' must be a positive finite number"
-            )
-    if boundaries["s_max_hours"] >= boundaries["m_max_hours"]:
-        raise CalcError(
-            "run-summary: 's_max_hours' must be less than 'm_max_hours'"
-        )
-    return boundaries
-
-
-def cmd_run_summary(payload):
-    run_id = _required_string(payload, "run_id", "run-summary")
-    if any(separator in run_id for separator in (os.sep, os.altsep) if separator):
-        raise CalcError("run-summary: 'run_id' must not contain a path separator")
-    history_path = _required_string(payload, "history_path", "run-summary")
-    analysis = _validated_analysis(payload, "run-summary")
-    # The summary always lands next to the history file; there is no
-    # caller-controlled output path.
-    output_dir = os.path.realpath(os.path.join(
-        os.path.dirname(os.path.abspath(history_path)), "runs"
-    ))
-    traditional = _validated_totals(payload, "traditional")
-    ai_assisted = _validated_totals(payload, "ai_assisted", allow_null=True)
-    boundaries = _merged_size_boundaries(payload)
-    simulation = payload.get("simulation")
-    if simulation is not None and not isinstance(simulation, dict):
-        raise CalcError("run-summary: 'simulation' must be an object")
-
-    records, _warnings = read_history(history_path)
-    run_records = [record for record in records if record["run_id"] == run_id]
-    if not run_records:
-        raise CalcError(f"run-summary: no history records for run_id {run_id!r}")
-
-    if ai_assisted is None:
-        p80 = traditional["p80"]
-        basis = "traditional_p80"
-    else:
-        p80 = ai_assisted["p80"]
-        basis = "ai_assisted_p80"
-    if p80 <= boundaries["s_max_hours"]:
-        label = "S"
-    elif p80 <= boundaries["m_max_hours"]:
-        label = "M"
-    else:
-        label = "L"
-
-    document = {
-        "schema_version": RUN_SCHEMA_VERSION,
-        "run_id": run_id,
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "size": {
-            "label": label,
-            "basis": basis,
-            "boundaries": boundaries,
-        },
-        "traditional": traditional,
-        "ai_assisted": ai_assisted,
-        "analysis": analysis,
-        **({"simulation": simulation} if simulation is not None else {}),
-        "tasks": [
-            {key: record[key] for key in ("id", "task", "category", "pert")}
-            for record in run_records
-        ],
-    }
-
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"{run_id}.json")
-    fd, tmp = tempfile.mkstemp(
-        dir=output_dir, prefix=".run-", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(document, fh, ensure_ascii=False, indent=2)
-            fh.write("\n")
-        os.replace(tmp, output_path)
-    except BaseException:
-        if os.path.exists(tmp):
-            os.remove(tmp)
-        raise
-    return document
 
 
 def _existing_run_ids(path):
@@ -652,12 +527,10 @@ def cmd_calibration(payload):
 
 def cmd_pipeline(payload):
     """Run the whole post-WBS flow in one call: reference-class correction,
-    traditional and AI-assisted simulation, history append, run summary.
+    traditional and AI-assisted simulation, and history append.
 
     Pure computation runs first, so a validation or simulation error leaves
-    no trace on disk. History is persisted before the run summary; a
-    run-summary failure is reported as {"summary": {"error": ...}} instead of
-    failing the call, because history is already authoritative at that point.
+    no trace on disk. History is the only persisted output.
     """
     history_path = _required_string(payload, "history_path", "pipeline")
     _required_string(payload, "slug", "pipeline")
@@ -749,8 +622,7 @@ def cmd_pipeline(payload):
         append_payload["lock_timeout"] = payload["lock_timeout"]
     run_id = cmd_append_history(append_payload)["run_id"]
 
-    # Returned to the caller as well as persisted: the skill fills the report's
-    # reproduction line from this, and it never reads the summary file back.
+    # Returned to the caller so the report can record reproducible parameters.
     simulation = {
         "distribution": traditional["distribution"],
         "trials": traditional["trials"],
@@ -760,26 +632,6 @@ def cmd_pipeline(payload):
         "traditional_seed": traditional["seed"],
         "ai_assisted_seed": ai_assisted["seed"] if ai_assisted else None,
     }
-    summary_payload = {
-        "run_id": run_id, "history_path": history_path,
-        "traditional": traditional["total"],
-        "ai_assisted": ai_assisted["total"] if ai_assisted else None,
-        "analysis": analysis,
-        "simulation": simulation,
-    }
-    if "boundaries" in payload:
-        summary_payload["boundaries"] = payload["boundaries"]
-    try:
-        summary_doc = cmd_run_summary(summary_payload)
-        summary = {
-            "path": os.path.join(
-                os.path.dirname(history_path), "runs", f"{run_id}.json"
-            ),
-            "size": summary_doc["size"]["label"],
-        }
-    except CalcError as exc:
-        summary = {"error": str(exc)}
-
     out_tasks = []
     for i, t in enumerate(final):
         out = {
@@ -802,7 +654,6 @@ def cmd_pipeline(payload):
         "correlation": traditional["correlation"],
         "hours_per_day": traditional["hours_per_day"],
         "simulation": simulation,
-        "summary": summary,
         "warnings": ref["warnings"],
     }
 
@@ -848,7 +699,6 @@ PAYLOAD_COMMANDS = {
     "reference-class": cmd_reference_class,
     "calibration": cmd_calibration,
     "distribute": cmd_distribute,
-    "run-summary": cmd_run_summary,
     "pipeline": cmd_pipeline,
 }
 

@@ -321,227 +321,6 @@ class TestReadHistory(HistoryBase):
         self.assertEqual(warnings, [])
 
 
-class TestRunSummary(HistoryBase):
-    def setUp(self):
-        super().setUp()
-        self.output_dir = os.path.join(self.dir.name, ".estimate", "runs")
-        self.appended = self.append(tasks=[
-            {"task": "Add endpoint", "category": "backend-api", "tags": ["auth"],
-             "o": 4, "m": 8, "p": 16},
-            {"task": "Write guide", "category": "docs", "tags": ["readme"],
-             "o": 1, "m": 2, "p": 3},
-        ])
-
-    def payload(self, **over):
-        base = {
-            "run_id": self.appended["run_id"],
-            "history_path": self.path,
-            "analysis": {
-                "mode": "quality",
-                "agents": ["spec-analyzer", "code-analyzer"],
-            },
-            "traditional": {"mean": 20.5, "p50": 20.1, "p80": 24.3},
-            "ai_assisted": {"mean": 10.0, "p50": 9.8, "p80": 12.0},
-        }
-        base.update(over)
-        return base
-
-    def test_persists_validated_analysis_provenance(self):
-        analysis = {"mode": "quality", "agents": ["spec-analyzer", "code-analyzer"]}
-        out = ec.cmd_run_summary(self.payload(analysis=analysis))
-        self.assertEqual(out["schema_version"], 3)
-        self.assertEqual(out["analysis"], analysis)
-
-    def test_rejects_invalid_analysis_before_writing_summary(self):
-        for analysis in (
-            None,
-            {"mode": "economy", "agents": ["code-analyzer"]},
-            {"mode": "quality", "agents": ["spec-analyzer", "spec-analyzer"]},
-            {"mode": "unknown", "agents": ["spec-analyzer"]},
-            {"mode": [], "agents": ["spec-analyzer"]},
-            {"mode": {}, "agents": ["spec-analyzer"]},
-            {"mode": "quality", "agents": [1]},
-            {"mode": "quality", "agents": [None]},
-            {"mode": "quality", "agents": [["spec-analyzer"]]},
-            {"mode": "quality", "agents": [{"name": "spec-analyzer"}]},
-        ):
-            with self.subTest(analysis=analysis), self.assertRaises(ec.CalcError):
-                ec.cmd_run_summary(self.payload(analysis=analysis))
-
-    def test_persists_person_days_when_supplied(self):
-        # The report quotes person-days; if the summary drops them the only
-        # way to recover them is freehand division, which the methodology
-        # forbids.
-        out = ec.cmd_run_summary(self.payload(
-            traditional={"mean": 20.5, "p50": 20.1, "p80": 24.3,
-                         "p50_days": 2.51, "p80_days": 3.04},
-        ))
-        self.assertEqual(out["traditional"]["p50_days"], 2.51)
-        self.assertEqual(out["traditional"]["p80_days"], 3.04)
-
-    def test_persists_simulation_parameters_for_reproducibility(self):
-        sim = {"distribution": "triangular", "trials": 500,
-               "correlation": 0.3, "hours_per_day": 8,
-               "traditional_seed": 42, "ai_assisted_seed": 43}
-        out = ec.cmd_run_summary(self.payload(simulation=sim))
-        self.assertEqual(out["simulation"], sim)
-
-    def test_simulation_block_is_absent_when_not_supplied(self):
-        self.assertNotIn("simulation", ec.cmd_run_summary(self.payload()))
-
-    def test_rejects_non_object_simulation(self):
-        for bad in ("triangular", ["triangular"], 3):
-            with self.subTest(simulation=bad), self.assertRaises(ec.CalcError):
-                ec.cmd_run_summary(self.payload(simulation=bad))
-
-    def test_zero_person_days_is_persisted_not_dropped(self):
-        out = ec.cmd_run_summary(self.payload(
-            traditional={"mean": 0.0, "p50": 0.0, "p80": 0.0,
-                         "p50_days": 0, "p80_days": 0},
-        ))
-        self.assertEqual(out["traditional"]["p50_days"], 0)
-        self.assertEqual(out["traditional"]["p80_days"], 0)
-
-    def test_rejects_negative_person_days(self):
-        with self.assertRaises(ec.CalcError):
-            ec.cmd_run_summary(self.payload(
-                traditional={"mean": 1.0, "p50": 1.0, "p80": 1.0,
-                             "p50_days": -1},
-            ))
-
-    def test_writes_default_document_and_reads_tasks_from_history(self):
-        out = ec.cmd_run_summary(self.payload())
-        path = os.path.join(self.output_dir, self.appended["run_id"] + ".json")
-        with open(path, encoding="utf-8") as fh:
-            persisted = json.load(fh)
-        self.assertEqual(persisted, out)
-        self.assertEqual(out["schema_version"], ec.RUN_SCHEMA_VERSION)
-        self.assertEqual(out["run_id"], self.appended["run_id"])
-        datetime.fromisoformat(out["generated_at"])
-        self.assertEqual(out["size"], {
-            "label": "M",
-            "basis": "ai_assisted_p80",
-            "boundaries": {"s_max_hours": 4, "m_max_hours": 16},
-        })
-        self.assertEqual(out["traditional"], self.payload()["traditional"])
-        self.assertEqual(out["ai_assisted"], self.payload()["ai_assisted"])
-        self.assertEqual(out["tasks"], [
-            {"id": self.appended["run_id"] + "-01", "task": "Add endpoint",
-             "category": "backend-api", "pert": 9.33},
-            {"id": self.appended["run_id"] + "-02", "task": "Write guide",
-             "category": "docs", "pert": 2.0},
-        ])
-
-    def test_null_ai_assisted_uses_traditional_p80_basis(self):
-        out = ec.cmd_run_summary(self.payload(ai_assisted=None))
-        self.assertIsNone(out["ai_assisted"])
-        self.assertEqual(out["size"]["basis"], "traditional_p80")
-        self.assertEqual(out["size"]["label"], "L")
-
-    def test_default_label_boundaries_are_inclusive(self):
-        for p80, expected in ((4.0, "S"), (4.1, "M"), (16.0, "M"), (16.1, "L")):
-            with self.subTest(p80=p80):
-                ai = {"mean": p80, "p50": p80, "p80": p80}
-                out = ec.cmd_run_summary(self.payload(ai_assisted=ai))
-                self.assertEqual(out["size"]["label"], expected)
-
-    def test_custom_and_partial_boundaries(self):
-        ai = {"mean": 5, "p50": 5, "p80": 5}
-        custom = ec.cmd_run_summary(self.payload(
-            ai_assisted=ai,
-            boundaries={"s_max_hours": 6, "m_max_hours": 20},
-        ))
-        self.assertEqual(custom["size"]["label"], "S")
-        self.assertEqual(custom["size"]["boundaries"], {
-            "s_max_hours": 6, "m_max_hours": 20,
-        })
-        partial = ec.cmd_run_summary(self.payload(
-            ai_assisted=ai,
-            boundaries={"s_max_hours": 3},
-        ))
-        self.assertEqual(partial["size"]["label"], "M")
-        self.assertEqual(partial["size"]["boundaries"], {
-            "s_max_hours": 3, "m_max_hours": 16,
-        })
-
-    def test_creates_missing_output_directory(self):
-        self.assertFalse(os.path.exists(self.output_dir))
-        ec.cmd_run_summary(self.payload())
-        self.assertTrue(os.path.isfile(
-            os.path.join(self.output_dir, self.appended["run_id"] + ".json")
-        ))
-
-    def test_unknown_output_dir_key_is_ignored(self):
-        # 'output_dir' was removed from the contract; a stale caller passing
-        # it must not redirect the summary away from .estimate/runs.
-        external_dir = os.path.join(self.dir.name, "external", "runs")
-        ec.cmd_run_summary(self.payload(output_dir=external_dir))
-        self.assertFalse(os.path.exists(external_dir))
-        self.assertTrue(os.path.isfile(os.path.join(
-            self.output_dir, self.appended["run_id"] + ".json"
-        )))
-
-    def test_rejects_missing_or_invalid_totals(self):
-        bad_payloads = [
-            self.payload(traditional={"mean": 1, "p50": 1}),
-            self.payload(traditional=None),
-            self.payload(ai_assisted={"mean": 1, "p50": 1, "p80": -1}),
-            self.payload(ai_assisted={"mean": 1, "p50": 1, "p80": True}),
-        ]
-        for payload in bad_payloads:
-            with self.subTest(payload=payload), self.assertRaises(ec.CalcError):
-                ec.cmd_run_summary(payload)
-
-    def test_rejects_invalid_boundaries(self):
-        for boundaries in (
-            {"s_max_hours": 16, "m_max_hours": 16},
-            {"s_max_hours": 0},
-            {"m_max_hours": float("inf")},
-        ):
-            with self.subTest(boundaries=boundaries), self.assertRaises(ec.CalcError):
-                ec.cmd_run_summary(self.payload(boundaries=boundaries))
-
-    def test_rejects_unknown_run_id(self):
-        with self.assertRaisesRegex(ec.CalcError, "no history records"):
-            ec.cmd_run_summary(self.payload(run_id="unknown-run"))
-
-    def test_rejects_invalid_required_strings(self):
-        for override in (
-            {"run_id": ""},
-            {"history_path": None},
-        ):
-            with self.subTest(override=override), self.assertRaises(ec.CalcError):
-                ec.cmd_run_summary(self.payload(**override))
-
-    def test_rejects_run_id_that_would_escape_output_directory(self):
-        record = json.loads(self.raw_lines()[0])
-        record["run_id"] = "../escape"
-        with open(self.path, "w", encoding="utf-8") as fh:
-            fh.write(json.dumps(record) + "\n")
-        with self.assertRaisesRegex(ec.CalcError, "run_id.*path"):
-            ec.cmd_run_summary(self.payload(run_id="../escape"))
-        self.assertFalse(os.path.exists(
-            os.path.join(self.dir.name, ".estimate", "escape.json")
-        ))
-
-    def test_cli_echoes_the_persisted_document(self):
-        payload_path = os.path.join(self.dir.name, "payload.json")
-        with open(payload_path, "w", encoding="utf-8") as fh:
-            json.dump(self.payload(), fh)
-        stdout = io.StringIO()
-        with contextlib.redirect_stdout(stdout):
-            rc = ec.main(["run-summary", "--input", payload_path])
-        self.assertEqual(rc, 0)
-        echoed = json.loads(stdout.getvalue())
-        with open(os.path.join(
-            self.output_dir, self.appended["run_id"] + ".json"
-        ), encoding="utf-8") as fh:
-            persisted = json.load(fh)
-        self.assertEqual(echoed, persisted)
-
-    def test_is_registered_as_payload_command(self):
-        self.assertIs(ec.PAYLOAD_COMMANDS["run-summary"], ec.cmd_run_summary)
-
 
 class TestUpdateActual(HistoryBase):
     def test_updates_matching_record(self):
@@ -828,13 +607,22 @@ class TestPipeline(HistoryBase):
         base.update(over)
         return base
 
-    def test_returns_and_persists_analysis_provenance(self):
+    def test_returns_analysis_and_simulation_without_summary(self):
         analysis = {"mode": "economy", "agents": ["spec-analyzer"]}
         out = ec.cmd_pipeline(self.payload(analysis=analysis))
         self.assertEqual(out["analysis"], analysis)
-        with open(os.path.join(os.path.dirname(self.path), "runs", out["run_id"] + ".json"),
-                  encoding="utf-8") as fh:
-            self.assertEqual(json.load(fh)["analysis"], analysis)
+        self.assertEqual(out["simulation"]["distribution"], "triangular")
+        self.assertNotIn("summary", out)
+
+    def test_pipeline_writes_history_without_a_runs_directory(self):
+        out = ec.cmd_pipeline(self.payload())
+        self.assertEqual(len(self.raw_lines()), 2)
+        self.assertFalse(os.path.exists(os.path.join(
+            os.path.dirname(self.path), "runs", out["run_id"] + ".json"
+        )))
+
+    def test_run_summary_is_not_a_payload_command(self):
+        self.assertNotIn("run-summary", ec.PAYLOAD_COMMANDS)
 
     def test_rejects_analysis_before_history_write(self):
         for analysis in (
@@ -855,10 +643,7 @@ class TestPipeline(HistoryBase):
         # reads this return value — not the summary file — so the parameters
         # have to come back here or the report cannot be filled honestly.
         out = ec.cmd_pipeline(self.payload())
-        with open(os.path.join(os.path.dirname(self.path), "runs",
-                               out["run_id"] + ".json"), encoding="utf-8") as fh:
-            persisted = json.load(fh)["simulation"]
-        self.assertEqual(out["simulation"], persisted)
+        self.assertEqual(out["simulation"]["distribution"], "triangular")
 
     def test_history_schema_version_is_unaffected_by_the_run_bump(self):
         # The two versions are independent. Bumping the run-summary format
@@ -870,27 +655,11 @@ class TestPipeline(HistoryBase):
         self.assertEqual({r["schema_version"] for r in recs}, {2})
         self.assertEqual(out["run_id"], recs[0]["run_id"])
 
-    def test_run_summary_records_how_the_simulation_was_run(self):
-        out = ec.cmd_pipeline(self.payload())
-        with open(os.path.join(os.path.dirname(self.path), "runs",
-                               out["run_id"] + ".json"), encoding="utf-8") as fh:
-            doc = json.load(fh)
-        sim = doc["simulation"]
-        self.assertEqual(sim["distribution"], "triangular")
-        self.assertEqual(sim["trials"], 500)
-        self.assertEqual(sim["correlation"], out["correlation"])
-        self.assertEqual(sim["hours_per_day"], out["hours_per_day"])
-        self.assertIsInstance(sim["traditional_seed"], int)
-        self.assertIsInstance(sim["ai_assisted_seed"], int)
-        self.assertIn("p50_days", doc["traditional"])
-
     def test_unseeded_pipeline_run_stays_reproducible(self):
         payload = self.payload()
         del payload["seed"]
         out = ec.cmd_pipeline(payload)
-        with open(os.path.join(os.path.dirname(self.path), "runs",
-                               out["run_id"] + ".json"), encoding="utf-8") as fh:
-            sim = json.load(fh)["simulation"]
+        sim = out["simulation"]
         replay = ec.cmd_simulate({
             "tasks": [{"name": t["task"], "o": t["o"], "m": t["m"], "p": t["p"]}
                       for t in out["tasks"]],
@@ -900,16 +669,6 @@ class TestPipeline(HistoryBase):
         })
         self.assertEqual(replay["total"]["p50"], out["traditional"]["p50"])
         self.assertEqual(replay["total"]["p80"], out["traditional"]["p80"])
-
-    def test_ai_view_disabled_records_no_ai_seed(self):
-        out = ec.cmd_pipeline(self.payload(ai_view=False, tasks=[
-            {"task": "Add endpoint", "category": "backend-api",
-             "tags": ["auth"], "o": 4, "m": 8, "p": 16},
-        ]))
-        with open(os.path.join(os.path.dirname(self.path), "runs",
-                               out["run_id"] + ".json"), encoding="utf-8") as fh:
-            sim = json.load(fh)["simulation"]
-        self.assertIsNone(sim["ai_assisted_seed"])
 
     def test_cold_start_runs_whole_flow(self):
         out = ec.cmd_pipeline(self.payload())
@@ -923,15 +682,9 @@ class TestPipeline(HistoryBase):
             out["tasks"][0]["ai_factor"], {"factor": 0.45, "source": "default"}
         )
         self.assertLess(out["ai_assisted"]["p80"], out["traditional"]["p80"])
-        # history and run summary both persisted
+        # history is the only persisted output
         recs = [json.loads(l) for l in self.raw_lines()]
         self.assertEqual([r["run_id"] for r in recs], [out["run_id"]] * 2)
-        self.assertTrue(os.path.isfile(os.path.join(
-            os.path.dirname(self.path), "runs", out["run_id"] + ".json"
-        )))
-        self.assertEqual(out["summary"]["path"], os.path.join(
-            os.path.dirname(self.path), "runs", out["run_id"] + ".json"
-        ))
 
     def test_applies_reference_class_correction(self):
         # 5 done backend-api records at ratio actual/pert = 2.0
@@ -959,40 +712,12 @@ class TestPipeline(HistoryBase):
             out["tasks"][1]["ai_factor"], {"factor": 0.35, "source": "default"}
         )
 
-    def test_ai_view_false_skips_factors_and_uses_traditional_basis(self):
-        payload = self.payload(ai_view=False)
-        for t in payload["tasks"]:
-            del t["default_factor"]
-        out = ec.cmd_pipeline(payload)
-        self.assertIsNone(out["ai_assisted"])
-        self.assertNotIn("ai_factor", out["tasks"][0])
-        summary_path = os.path.join(
-            os.path.dirname(self.path), "runs", out["run_id"] + ".json"
-        )
-        with open(summary_path, encoding="utf-8") as fh:
-            doc = json.load(fh)
-        self.assertEqual(doc["size"]["basis"], "traditional_p80")
-
     def test_missing_default_factor_fails_before_any_write(self):
         payload = self.payload()
         del payload["tasks"][1]["default_factor"]
         with self.assertRaisesRegex(ec.CalcError, "default_factor"):
             ec.cmd_pipeline(payload)
         self.assertFalse(os.path.exists(self.path))
-
-    def test_run_summary_failure_is_recoverable(self):
-        out = ec.cmd_pipeline(self.payload(
-            boundaries={"s_max_hours": 16, "m_max_hours": 16}
-        ))
-        self.assertIn("error", out["summary"])
-        # history was still written
-        self.assertEqual(len(self.raw_lines()), 2)
-
-    def test_boundaries_pass_through_to_summary(self):
-        out = ec.cmd_pipeline(self.payload(
-            boundaries={"s_max_hours": 500, "m_max_hours": 1000}
-        ))
-        self.assertEqual(out["summary"]["size"], "S")
 
     def test_simulation_params_pass_through(self):
         out = ec.cmd_pipeline(self.payload(correlation=0.7, hours_per_day=6))
@@ -1045,24 +770,6 @@ class TestPipeline(HistoryBase):
                 set(anchor.keys()),
                 {"task", "pert", "actual", "ai_assisted", "tags"},
             )
-
-    def test_cli_real_path_writes_history_and_summary(self):
-        payload_path = os.path.join(self.dir.name, "pipeline_payload.json")
-        with open(payload_path, "w", encoding="utf-8") as fh:
-            json.dump(self.payload(), fh)
-        stdout = io.StringIO()
-        with contextlib.redirect_stdout(stdout):
-            rc = ec.main(["pipeline", "--input", payload_path])
-        self.assertEqual(rc, 0)
-        out = json.loads(stdout.getvalue())
-        self.assertEqual(len(self.raw_lines()), 2)
-        summary_path = os.path.join(
-            os.path.dirname(self.path), "runs", out["run_id"] + ".json"
-        )
-        self.assertTrue(os.path.isfile(summary_path))
-        with open(summary_path, encoding="utf-8") as fh:
-            persisted = json.load(fh)
-        self.assertEqual(persisted["run_id"], out["run_id"])
 
     def test_is_registered_as_payload_command(self):
         self.assertIs(ec.PAYLOAD_COMMANDS["pipeline"], ec.cmd_pipeline)
