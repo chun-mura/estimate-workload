@@ -60,9 +60,8 @@ obtain a mode choice in step 2; do not select a mode by default.
    constraints), ask AT MOST 5 questions in one AskUserQuestion call. Skip
    this step entirely when nothing critical is missing. Record every
    unanswered gap as an assumption; assumptions widen P in step 6. In
-   `economy` mode, for every code-affecting WBS task, add the fixed
-   code-impact assumption and risk required in step 8 and widen its raw P for
-   the unverified code impact before pipeline correction.
+   `economy` mode, collect the fixed code-impact assumption and risk required
+   in step 8 for the code-affecting WBS tasks identified in step 5.
 5. **WBS.** Merge per the methodology: in `quality`, the spec view defines
    WHAT and the code view defines WHERE/HOW HARD (the code view wins on
    difficulty); in `economy`, use the spec view with the code-impact
@@ -70,7 +69,9 @@ obtain a mode choice in step 2; do not select a mode by default.
    category (fixed taxonomy) and tags.
 6. **Anchored 3-point estimates.** Call CALC `reference-class` (tasks with
    name/category/tags only) to fetch anchors. Assign raw O/M/P per task per
-   the methodology, anchored when anchors exist, with a one-line rationale.
+   the methodology, anchored when anchors exist, with a one-line rationale. In
+   `economy` mode, for every code-affecting WBS task, widen its raw P for the
+   unverified code impact before pipeline correction.
 7. **Pipeline.** Write ONE payload file (to the scratchpad or a temp path) and
    call CALC `pipeline --input <file>` — a single call that applies
    reference-class corrections, simulates both views, appends history, and
