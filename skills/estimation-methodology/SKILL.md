@@ -99,7 +99,8 @@ at intake — then report only the traditional view and say the AI-assisted
 view was skipped at the user's request):
 - **Traditional effort:** the simulated totals as-is, in hours and person-days.
   Pass `hours_per_day` from `.estimate/config.json` (if present) to `pipeline`
-  and report the returned `p50_days`/`p80_days` — never divide hours yourself.
+  and report the returned `p50_days`/`p80_days` directly — never divide hours
+  yourself.
 - **AI-assisted effort:** per-category multipliers applied to task hours before
   simulation. Supply each task's `default_factor` from
   `references/ai-assistance-factors.md`; `pipeline` replaces it with the

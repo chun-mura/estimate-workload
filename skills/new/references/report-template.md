@@ -16,14 +16,14 @@ A run-to-run difference in structure is a defect, not a style choice.
    string straight to `update-actual --id`, and a shortened id fails there.
 2. **One number per column.** Do not merge O/M/P into a single `O/M/P` cell,
    and do not append units to cell values — the unit is in the column header.
-3. **Never invent a run_id or a `.estimate/runs/` path.** Both come from the
-   `pipeline` result. If `pipeline` did not return a `run_id`, there is no
-   report to write — stop and report the failure instead.
+3. **Never invent a run_id.** It comes from the `pipeline` result. If
+   `pipeline` did not return a `run_id`, there is no report to write — stop
+   and report the failure instead.
 4. Every `<placeholder>` below is replaced by a value returned by `pipeline`
    or written by you; no placeholder survives into the output.
 5. The 見積もり手法 section states the reproduction conditions
-   (`distribution`, `trials`, seed) from the `simulation` block of the run
-   summary, so a reader can re-derive the percentiles rather than trust them.
+   (`distribution`, `trials`, seed) from `pipeline`'s returned `simulation`
+   block, so a reader can re-derive the percentiles rather than trust them.
 
 ## Template
 
@@ -32,7 +32,6 @@ A run-to-run difference in structure is a defect, not a style choice.
 
 - **run_id**: `<run_id>`
 - **作成日**: <YYYY-MM-DD>
-- **規模**: <size.label>（<size.basis>）
 
 ## サマリ
 
@@ -59,21 +58,9 @@ A run-to-run difference in structure is a defect, not a style choice.
 - 解析モード: <pipeline.analysis.mode>
 - O/M/P は <corrected: 参照クラス補正後 / uncorrected: 補正なしの生値> の値
 - 分布 <distribution> / 試行 <trials> 回 / seed <traditional_seed>（再現条件は
-  run summary の `simulation` に記録）
-
-## 従来型見積もり
-
-| 指標 | 時間 | 人日 |
-|---|---|---|
-| P50 | <p50>h | <p50_days>人日 |
-| P80 | <p80>h | <p80_days>人日 |
+  `pipeline` の `simulation` に記録）
 
 ## AI支援見積もり
-
-| 指標 | 時間 | 人日 |
-|---|---|---|
-| P50 | <p50>h | <p50_days>人日 |
-| P80 | <p80>h | <p80_days>人日 |
 
 | カテゴリ | 係数 | 出典 |
 |---|---|---|
@@ -102,15 +89,11 @@ A run-to-run difference in structure is a defect, not a style choice.
 
 ## フッター
 
-- Machine-readable summary: `.estimate/runs/<run_id>.json`
 - 実績記録: 完了後に `/estimate:record <run_id>` を実行
 ```
 
 ## Section notes
 
-- **サマリ / 従来型 / AI支援** intentionally repeat the totals: the summary is
-  the at-a-glance view, the two view sections carry the per-view detail
-  (factor sources, day conversion). Keep both.
 - When the user declined the AI-assisted view at intake, keep the
   `## AI支援見積もり` heading and replace its body with the single line
   `ユーザーの依頼により省略。` — and drop the AI rows from `## サマリ`.

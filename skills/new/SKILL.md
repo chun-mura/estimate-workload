@@ -8,12 +8,10 @@ argument-hint: [file paths and/or a description of the work to estimate]
 First read `${CLAUDE_PLUGIN_ROOT}/skills/estimation-methodology/SKILL.md` and
 its `references/category-taxonomy.md`, and follow them exactly. Read
 `references/ai-assistance-factors.md` only after step 2 confirms the
-AI-assisted view is included; `references/worked-example.md` is optional and
-normally skipped. CALC below means
+AI-assisted view is included. CALC below means
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/estimate_calc.py"`. The history file is
 `.estimate/history.jsonl` in the current project. If any CALC call fails, stop
-and report its stderr — no freehand fallback — except for the recoverable
-run-summary failure inside `pipeline` described in step 7.
+and report its stderr — no freehand fallback.
 
 Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
 
@@ -76,8 +74,8 @@ obtain a mode choice in step 2; do not select a mode by default.
    unverified code impact before pipeline correction.
 7. **Pipeline.** Write ONE payload file (to the scratchpad or a temp path) and
    call CALC `pipeline --input <file>` — a single call that applies
-   reference-class corrections, simulates both views, appends history, and
-   writes the run summary. Never re-serialize the task list into separate
+   reference-class corrections, simulates both views, and appends history.
+   Never re-serialize the task list into separate
    per-step calls. Payload:
    - `history_path: ".estimate/history.jsonl"`, `slug` (kebab-case from the
      work's name), and `tasks` — each with `task`, `category`, `tags`, raw
@@ -92,8 +90,7 @@ obtain a mode choice in step 2; do not select a mode by default.
      agent names. This is required even when a quality-mode analyzer failed and
      the result is partial.
    - `correlation` and `hours_per_day` from `.estimate/config.json` if
-     present, and `size_boundaries` from the same file as `boundaries`;
-     otherwise omit each so CALC owns the defaults (`0.3`, `8`, S/M/L).
+     present; otherwise omit each so CALC owns the defaults (`0.3`, `8`).
    The result contains the `run_id` (task ids are `<run_id>-01`, `-02`, … in
    input order), per-task corrected `o`/`m`/`p`/`pert` with each correction's
    `basis`/`low_sample` (or its skip reason), per-task `ai_factor` with its
@@ -102,9 +99,7 @@ obtain a mode choice in step 2; do not select a mode by default.
    `simulation` block (`distribution`, `trials`, `correlation`,
    `hours_per_day`, `traditional_seed`, `ai_assisted_seed`) that the report
    quotes as the run's reproduction conditions.
-   If the returned `summary` is `{"error": ...}`, history is already
-   authoritative: report the error, omit the summary footer in step 8, and
-   continue. Any other failure: stop and report stderr.
+   Any failure: stop and report stderr.
 8. **Report file.** Read
    `${CLAUDE_PLUGIN_ROOT}/skills/new/references/report-template.md` and follow
    it exactly — its section order, heading text, and table columns are fixed, so
@@ -115,10 +110,9 @@ obtain a mode choice in step 2; do not select a mode by default.
    `pipeline` result of step 7: totals from `traditional`/`ai_assisted`
    (including `p50_days`/`p80_days` — never divide hours yourself), per-task
    `pert`, and the full task ids used verbatim in the 履歴ID column.
-   Never compute, round, or invent any of them. If `pipeline` did not return
-   a `run_id`, do NOT write a report at all — report the failure and stop.
-   When `summary` returned `{"error": ...}`, keep the フッター section but
-   replace its Machine-readable line with the error.
+   Never compute, round, or invent any of them. The report's reproduction
+   values come directly from `pipeline.simulation`. If `pipeline` did not
+   return a `run_id`, do NOT write a report at all — report the failure and stop.
    In `## 見積もり手法`, include exactly `- 解析モード: quality` or
    `- 解析モード: economy`, copied from `pipeline.analysis.mode`. For an
    `economy` report, include these exact entries in their designated sections:
