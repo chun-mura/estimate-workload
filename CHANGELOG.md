@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Document in the README's Versioning section that any change to
+  `scripts/`, `skills/`, or `agents/` must bump `plugin.json`'s `version` and
+  get a CHANGELOG entry in the same commit or PR. `version` had sat at
+  `0.1.0` since the initial scaffold through several behavior-changing
+  fixes, and a cached 0.1.0 install kept producing estimates with a
+  point-estimate formula already corrected upstream, with no version signal
+  that anything had changed
+
 ## [0.2.0] - 2026-07-18
 
 ### Added

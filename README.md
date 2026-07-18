@@ -124,6 +124,17 @@ Monte Carlo simulation over the full O/M/P ranges.
 
 ## Versioning
 
+**Any change to a plugin asset — `scripts/`, `skills/`, `agents/` — bumps
+`.claude-plugin/plugin.json`'s `version` and gets a CHANGELOG entry in the
+same commit or PR.** Content changing while the version stays put is
+indistinguishable, to a plugin manager comparing versions, from nothing
+having changed at all: a cached install can keep running stale code
+indefinitely with no signal that a fix landed upstream. This happened in
+practice — `version` sat at `0.1.0` from the initial scaffold through several
+behavior-changing fixes, until a cached 0.1.0 install kept producing
+estimates with a point-estimate formula that had already been corrected in
+this repo.
+
 The plugin follows semver (`.claude-plugin/plugin.json`). History records carry
 a `schema_version`; run summaries carry an independent `schema_version` so a
 breaking change to one format cannot silently change the other. Readers of
