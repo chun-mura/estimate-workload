@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `/estimate:new` now offers `quality` and `economy` analysis modes. Both
+  analyse a related task batch once; quality uses the specification and
+  codebase analyzers, while economy uses only the specification analyzer and
+  records mandatory code-impact caveats.
+- Run-summary schema version 3 records `analysis.mode` and
+  `analysis.agents`, making the evidence coverage of every new estimate
+  machine-readable.
 - Document in the README's Versioning section that any change to
   `scripts/`, `skills/`, or `agents/` must bump `plugin.json`'s `version` and
   get a CHANGELOG entry in the same commit or PR. `version` had sat at

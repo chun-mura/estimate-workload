@@ -43,7 +43,8 @@ claude --plugin-dir .
 1. Produce an estimate from a spec, issue, or free-text description:
 
    ```
-   /estimate:new docs/spec.md
+   /estimate:new --mode quality docs/spec.md docs/tasks.md
+   /estimate:new --mode economy docs/spec.md docs/tasks.md
    ```
 
    This reads the input, dispatches spec/code analysis, builds the WBS,
@@ -52,6 +53,12 @@ claude --plugin-dir .
    report follows one fixed structure
    (`skills/new/references/report-template.md`), so reports are comparable
    run to run.
+
+   One invocation is one related-task batch. In `quality` mode, requirement
+   and repository analysis run once for the full batch. In `economy` mode,
+   only requirement analysis runs and code impact is marked unverified. Put
+   fifteen related tasks in one invocation to avoid repeating shared
+   analysis; fifteen independent commands remain fifteen separate batches.
 
 2. After the work is done, record actual hours against that run:
 
@@ -81,6 +88,10 @@ returns the same percentiles, even when the original run was not seeded
 explicitly. They are written atomically by `run-summary` and are not
 regenerated
 when `/estimate:record` later stores actuals.
+
+Run-summary schema version 3 introduced `analysis.mode` and
+`analysis.agents`, which record the selected analysis mode and the analyzers
+that supplied evidence for the estimate.
 
 Choose the repository policy that fits your project. Commit both
 `.estimate/history.jsonl` and `.estimate/runs/` to share calibration data and
