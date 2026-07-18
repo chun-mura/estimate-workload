@@ -21,6 +21,9 @@ A run-to-run difference in structure is a defect, not a style choice.
    report to write — stop and report the failure instead.
 4. Every `<placeholder>` below is replaced by a value returned by `pipeline`
    or written by you; no placeholder survives into the output.
+5. The 見積もり手法 section states the reproduction conditions
+   (`distribution`, `trials`, seed) from the `simulation` block of the run
+   summary, so a reader can re-derive the percentiles rather than trust them.
 
 ## Template
 
@@ -54,6 +57,8 @@ A run-to-run difference in structure is a defect, not a style choice.
 - **P80**: コミット水準。社外見積もりに使う
 - タスク相関 rho = <correlation>（common-cause factor によるモンテカルロ）
 - O/M/P は <corrected: 参照クラス補正後 / uncorrected: 補正なしの生値> の値
+- 分布 <distribution> / 試行 <trials> 回 / seed <traditional_seed>（再現条件は
+  run summary の `simulation` に記録）
 
 ## 従来型見積もり
 

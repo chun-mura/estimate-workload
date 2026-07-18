@@ -70,6 +70,45 @@ class TestSimulate(unittest.TestCase):
         b = ec.cmd_simulate(self.payload())
         self.assertEqual(a["total"], b["total"])
 
+    def test_reports_the_model_it_sampled(self):
+        out = ec.cmd_simulate(self.payload())
+        self.assertEqual(out["distribution"], "triangular")
+
+    def test_echoes_the_caller_supplied_seed(self):
+        self.assertEqual(ec.cmd_simulate(self.payload(seed=42))["seed"], 42)
+
+    def test_generates_and_reports_a_seed_when_none_given(self):
+        # Without this, an unseeded run is unreproducible: the totals it
+        # reports can never be regenerated from the summary alone.
+        payload = self.payload()
+        del payload["seed"]
+        out = ec.cmd_simulate(payload)
+        self.assertIsInstance(out["seed"], int)
+        replay = ec.cmd_simulate({**payload, "seed": out["seed"]})
+        self.assertEqual(replay["total"], out["total"])
+
+    def test_rejects_non_integer_seed(self):
+        for bad in ("42", True, 42.0, [42]):
+            with self.subTest(seed=bad), self.assertRaises(ec.CalcError):
+                ec.cmd_simulate(self.payload(seed=bad))
+
+    def test_seed_zero_is_used_not_treated_as_missing(self):
+        # 0 is falsy; a truthiness check here would silently reseed the run.
+        out = ec.cmd_simulate(self.payload(seed=0))
+        self.assertEqual(out["seed"], 0)
+        self.assertEqual(out["total"], ec.cmd_simulate(self.payload(seed=0))["total"])
+
+    def test_generated_seed_survives_json_round_trip(self):
+        # Run summaries are advertised as machine-readable; a seed above
+        # 2**53 loses precision in JSON readers backed by IEEE-754 doubles,
+        # which would make the recorded seed replay a different run.
+        payload = self.payload()
+        del payload["seed"]
+        for _ in range(200):
+            seed = ec.cmd_simulate(payload)["seed"]
+            self.assertLess(seed, 2 ** 53)
+            self.assertEqual(json.loads(json.dumps(seed)), seed)
+
     def test_percentile_ordering_and_bounds(self):
         t = ec.cmd_simulate(self.payload())["total"]
         self.assertLessEqual(t["p50"], t["p80"])
@@ -303,13 +342,54 @@ class TestRunSummary(HistoryBase):
         base.update(over)
         return base
 
+    def test_persists_person_days_when_supplied(self):
+        # The report quotes person-days; if the summary drops them the only
+        # way to recover them is freehand division, which the methodology
+        # forbids.
+        out = ec.cmd_run_summary(self.payload(
+            traditional={"mean": 20.5, "p50": 20.1, "p80": 24.3,
+                         "p50_days": 2.51, "p80_days": 3.04},
+        ))
+        self.assertEqual(out["traditional"]["p50_days"], 2.51)
+        self.assertEqual(out["traditional"]["p80_days"], 3.04)
+
+    def test_persists_simulation_parameters_for_reproducibility(self):
+        sim = {"distribution": "triangular", "trials": 500,
+               "correlation": 0.3, "hours_per_day": 8,
+               "traditional_seed": 42, "ai_assisted_seed": 43}
+        out = ec.cmd_run_summary(self.payload(simulation=sim))
+        self.assertEqual(out["simulation"], sim)
+
+    def test_simulation_block_is_absent_when_not_supplied(self):
+        self.assertNotIn("simulation", ec.cmd_run_summary(self.payload()))
+
+    def test_rejects_non_object_simulation(self):
+        for bad in ("triangular", ["triangular"], 3):
+            with self.subTest(simulation=bad), self.assertRaises(ec.CalcError):
+                ec.cmd_run_summary(self.payload(simulation=bad))
+
+    def test_zero_person_days_is_persisted_not_dropped(self):
+        out = ec.cmd_run_summary(self.payload(
+            traditional={"mean": 0.0, "p50": 0.0, "p80": 0.0,
+                         "p50_days": 0, "p80_days": 0},
+        ))
+        self.assertEqual(out["traditional"]["p50_days"], 0)
+        self.assertEqual(out["traditional"]["p80_days"], 0)
+
+    def test_rejects_negative_person_days(self):
+        with self.assertRaises(ec.CalcError):
+            ec.cmd_run_summary(self.payload(
+                traditional={"mean": 1.0, "p50": 1.0, "p80": 1.0,
+                             "p50_days": -1},
+            ))
+
     def test_writes_default_document_and_reads_tasks_from_history(self):
         out = ec.cmd_run_summary(self.payload())
         path = os.path.join(self.output_dir, self.appended["run_id"] + ".json")
         with open(path, encoding="utf-8") as fh:
             persisted = json.load(fh)
         self.assertEqual(persisted, out)
-        self.assertEqual(out["schema_version"], 1)
+        self.assertEqual(out["schema_version"], ec.RUN_SCHEMA_VERSION)
         self.assertEqual(out["run_id"], self.appended["run_id"])
         datetime.fromisoformat(out["generated_at"])
         self.assertEqual(out["size"], {
@@ -717,6 +797,67 @@ class TestPipeline(HistoryBase):
         }
         base.update(over)
         return base
+
+    def test_returns_the_reproduction_parameters_to_its_caller(self):
+        # The report template quotes distribution/trials/seed, and the skill
+        # reads this return value — not the summary file — so the parameters
+        # have to come back here or the report cannot be filled honestly.
+        out = ec.cmd_pipeline(self.payload())
+        with open(os.path.join(os.path.dirname(self.path), "runs",
+                               out["run_id"] + ".json"), encoding="utf-8") as fh:
+            persisted = json.load(fh)["simulation"]
+        self.assertEqual(out["simulation"], persisted)
+
+    def test_history_schema_version_is_unaffected_by_the_run_bump(self):
+        # The two versions are independent. Bumping the run-summary format
+        # must not restamp history records, which readers of other checkouts
+        # would then skip as unknown. Pinned to the literal so a future bump
+        # of either constant has to be a deliberate edit here.
+        out = ec.cmd_pipeline(self.payload())
+        recs = [json.loads(l) for l in self.raw_lines()]
+        self.assertEqual({r["schema_version"] for r in recs}, {2})
+        self.assertEqual(out["run_id"], recs[0]["run_id"])
+
+    def test_run_summary_records_how_the_simulation_was_run(self):
+        out = ec.cmd_pipeline(self.payload())
+        with open(os.path.join(os.path.dirname(self.path), "runs",
+                               out["run_id"] + ".json"), encoding="utf-8") as fh:
+            doc = json.load(fh)
+        sim = doc["simulation"]
+        self.assertEqual(sim["distribution"], "triangular")
+        self.assertEqual(sim["trials"], 500)
+        self.assertEqual(sim["correlation"], out["correlation"])
+        self.assertEqual(sim["hours_per_day"], out["hours_per_day"])
+        self.assertIsInstance(sim["traditional_seed"], int)
+        self.assertIsInstance(sim["ai_assisted_seed"], int)
+        self.assertIn("p50_days", doc["traditional"])
+
+    def test_unseeded_pipeline_run_stays_reproducible(self):
+        payload = self.payload()
+        del payload["seed"]
+        out = ec.cmd_pipeline(payload)
+        with open(os.path.join(os.path.dirname(self.path), "runs",
+                               out["run_id"] + ".json"), encoding="utf-8") as fh:
+            sim = json.load(fh)["simulation"]
+        replay = ec.cmd_simulate({
+            "tasks": [{"name": t["task"], "o": t["o"], "m": t["m"], "p": t["p"]}
+                      for t in out["tasks"]],
+            "trials": sim["trials"], "correlation": sim["correlation"],
+            "hours_per_day": sim["hours_per_day"],
+            "seed": sim["traditional_seed"],
+        })
+        self.assertEqual(replay["total"]["p50"], out["traditional"]["p50"])
+        self.assertEqual(replay["total"]["p80"], out["traditional"]["p80"])
+
+    def test_ai_view_disabled_records_no_ai_seed(self):
+        out = ec.cmd_pipeline(self.payload(ai_view=False, tasks=[
+            {"task": "Add endpoint", "category": "backend-api",
+             "tags": ["auth"], "o": 4, "m": 8, "p": 16},
+        ]))
+        with open(os.path.join(os.path.dirname(self.path), "runs",
+                               out["run_id"] + ".json"), encoding="utf-8") as fh:
+            sim = json.load(fh)["simulation"]
+        self.assertIsNone(sim["ai_assisted_seed"])
 
     def test_cold_start_runs_whole_flow(self):
         out = ec.cmd_pipeline(self.payload())

@@ -66,7 +66,10 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
    input order), per-task corrected `o`/`m`/`p`/`pert` with each correction's
    `basis`/`low_sample` (or its skip reason), per-task `ai_factor` with its
    `source` (learned factors win over `default_factor` inside CALC — never
-   multiply hours yourself), both totals, and the resolved `correlation`.
+   multiply hours yourself), both totals, the resolved `correlation`, and a
+   `simulation` block (`distribution`, `trials`, `correlation`,
+   `hours_per_day`, `traditional_seed`, `ai_assisted_seed`) that the report
+   quotes as the run's reproduction conditions.
    If the returned `summary` is `{"error": ...}`, history is already
    authoritative: report the error, omit the summary footer in step 8, and
    continue. Any other failure: stop and report stderr.

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Run summaries record a `simulation` block — sampling distribution, trials,
+  correlation, hours per day, and the seed each view used — so a run can be
+  replayed exactly. `simulate` now resolves and returns a seed when the caller
+  supplies none; previously an unseeded run could never be reproduced from its
+  summary. Run summary `schema_version` bumped to 2
+- Run summaries persist `p50_days`/`p80_days` alongside the hour totals, so
+  reading person-days back no longer requires the freehand division the
+  methodology forbids
+
 ### Fixed
 - Reports produced by `/estimate:new` now follow one fixed structure
   (`skills/new/references/report-template.md`): section order, heading text,

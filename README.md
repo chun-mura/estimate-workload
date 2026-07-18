@@ -72,8 +72,13 @@ Nothing is sent anywhere else.
 `history.jsonl` is one estimated or completed task record per line and is only
 written through `append-history` and `update-actual`. Run-summary JSON files
 contain the run id, generated time, S/M/L classification and boundaries,
-traditional and AI-assisted totals, and the persisted task ids/categories/
-expected means. They are written atomically by `run-summary` and are not
+traditional and AI-assisted totals (hours and person-days), the persisted task
+ids/categories/expected means, and a `simulation` block recording how the
+totals were produced — sampling distribution, trial count, correlation,
+hours per day, and the seed each view used. Those seeds make a run
+reproducible: replaying `simulate` with the recorded parameters and seed
+returns the same percentiles, even when the original run was not seeded
+explicitly. They are written atomically by `run-summary` and are not
 regenerated
 when `/estimate:record` later stores actuals.
 
@@ -127,4 +132,7 @@ history never rewrite the file and skip records with an unknown
 plugin 0.1.x carry `schema_version: 1`, whose `pert` field was computed with a
 formula that does not match the simulation model; current readers exclude them
 from anchors and calibration rather than mixing incompatible baselines.
-Consumers of run summaries must check their schema version before parsing.
+Consumers of run summaries must check their schema version before parsing:
+summaries written by plugin 0.1.x carry `schema_version: 1` and have no
+`simulation` block or person-day fields, so the runs they describe cannot be
+reproduced.

@@ -32,7 +32,11 @@ KNOWN_SCHEMA_VERSIONS = {2}
 CATEGORIES = {"backend-api", "frontend-ui", "db-migration", "infra", "test-only", "docs"}
 DEFAULT_TRIALS = 10_000
 DEFAULT_CORRELATION = 0.3
-RUN_SCHEMA_VERSION = 1
+RUN_SCHEMA_VERSION = 2
+
+# The sampling model cmd_simulate implements. Recorded in every run summary so
+# a reader can tell which distribution produced the percentiles.
+DISTRIBUTION = "triangular"
 DEFAULT_SIZE_BOUNDARIES = {"s_max_hours": 4, "m_max_hours": 16}
 DEFAULT_HOURS_PER_DAY = 8
 LOW_SAMPLE_THRESHOLD = 10
@@ -112,7 +116,16 @@ def cmd_simulate(payload):
     if not _is_number(hours_per_day) or hours_per_day <= 0:
         raise CalcError("simulate: 'hours_per_day' must be a positive finite number")
 
-    rng = random.Random(payload.get("seed"))
+    seed = payload.get("seed")
+    if seed is None:
+        # An unseeded run is otherwise unreproducible: resolve a seed here so
+        # the caller can persist it and replay the exact same totals. Kept
+        # below 2**53 so it survives JSON readers that store numbers as
+        # IEEE-754 doubles — a rounded seed would replay a different run.
+        seed = random.randrange(2 ** 53)
+    elif not isinstance(seed, int) or isinstance(seed, bool):
+        raise CalcError("simulate: 'seed' must be an integer")
+    rng = random.Random(seed)
     common_weight = math.sqrt(correlation)
     individual_weight = math.sqrt(1 - correlation)
     totals = []
@@ -146,6 +159,8 @@ def cmd_simulate(payload):
         "trials": trials,
         "correlation": correlation,
         "hours_per_day": hours_per_day,
+        "distribution": DISTRIBUTION,
+        "seed": seed,
     }
 
 
@@ -229,6 +244,17 @@ def _validated_totals(payload, key, allow_null=False):
                 f"run-summary: '{key}.{metric}' must be a non-negative finite number"
             )
         result[metric] = value
+    # Person-days are carried through when the caller has them, so readers of
+    # the summary never have to divide hours themselves.
+    for metric in ("p50_days", "p80_days"):
+        value = totals.get(metric)
+        if value is None:
+            continue
+        if not _is_number(value) or value < 0:
+            raise CalcError(
+                f"run-summary: '{key}.{metric}' must be a non-negative finite number"
+            )
+        result[metric] = value
     return result
 
 
@@ -265,6 +291,9 @@ def cmd_run_summary(payload):
     traditional = _validated_totals(payload, "traditional")
     ai_assisted = _validated_totals(payload, "ai_assisted", allow_null=True)
     boundaries = _merged_size_boundaries(payload)
+    simulation = payload.get("simulation")
+    if simulation is not None and not isinstance(simulation, dict):
+        raise CalcError("run-summary: 'simulation' must be an object")
 
     records, _warnings = read_history(history_path)
     run_records = [record for record in records if record["run_id"] == run_id]
@@ -295,6 +324,7 @@ def cmd_run_summary(payload):
         },
         "traditional": traditional,
         "ai_assisted": ai_assisted,
+        **({"simulation": simulation} if simulation is not None else {}),
         "tasks": [
             {key: record[key] for key in ("id", "task", "category", "pert")}
             for record in run_records
@@ -685,10 +715,22 @@ def cmd_pipeline(payload):
         append_payload["lock_timeout"] = payload["lock_timeout"]
     run_id = cmd_append_history(append_payload)["run_id"]
 
+    # Returned to the caller as well as persisted: the skill fills the report's
+    # reproduction line from this, and it never reads the summary file back.
+    simulation = {
+        "distribution": traditional["distribution"],
+        "trials": traditional["trials"],
+        "correlation": traditional["correlation"],
+        "hours_per_day": traditional["hours_per_day"],
+        # Each view samples its own stream, so each carries its own seed.
+        "traditional_seed": traditional["seed"],
+        "ai_assisted_seed": ai_assisted["seed"] if ai_assisted else None,
+    }
     summary_payload = {
         "run_id": run_id, "history_path": history_path,
         "traditional": traditional["total"],
         "ai_assisted": ai_assisted["total"] if ai_assisted else None,
+        "simulation": simulation,
     }
     if "boundaries" in payload:
         summary_payload["boundaries"] = payload["boundaries"]
@@ -723,6 +765,7 @@ def cmd_pipeline(payload):
         "trials": traditional["trials"],
         "correlation": traditional["correlation"],
         "hours_per_day": traditional["hours_per_day"],
+        "simulation": simulation,
         "summary": summary,
         "warnings": ref["warnings"],
     }
