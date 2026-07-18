@@ -32,7 +32,9 @@ KNOWN_SCHEMA_VERSIONS = {2}
 CATEGORIES = {"backend-api", "frontend-ui", "db-migration", "infra", "test-only", "docs"}
 DEFAULT_TRIALS = 10_000
 DEFAULT_CORRELATION = 0.3
-RUN_SCHEMA_VERSION = 2
+RUN_SCHEMA_VERSION = 3
+ANALYSIS_MODES = {"quality", "economy"}
+ANALYSIS_AGENTS = {"spec-analyzer", "code-analyzer"}
 
 # The sampling model cmd_simulate implements. Recorded in every run summary so
 # a reader can tell which distribution produced the percentiles.
@@ -229,6 +231,32 @@ def _required_string(payload, key, command):
     return value
 
 
+def _validated_analysis(payload, command):
+    analysis = payload.get("analysis")
+    if not isinstance(analysis, dict):
+        raise CalcError(f"{command}: 'analysis' must be an object")
+    mode = analysis.get("mode")
+    agents = analysis.get("agents")
+    if mode not in ANALYSIS_MODES:
+        raise CalcError(
+            f"{command}: 'analysis.mode' must be one of {sorted(ANALYSIS_MODES)}"
+        )
+    if not isinstance(agents, list) or not agents:
+        raise CalcError(f"{command}: 'analysis.agents' must be a non-empty list")
+    if any(agent not in ANALYSIS_AGENTS for agent in agents):
+        raise CalcError(
+            f"{command}: 'analysis.agents' must contain only "
+            f"{sorted(ANALYSIS_AGENTS)}"
+        )
+    if len(set(agents)) != len(agents):
+        raise CalcError(f"{command}: 'analysis.agents' must not contain duplicates")
+    if mode == "economy" and agents != ["spec-analyzer"]:
+        raise CalcError(
+            f"{command}: economy analysis requires ['spec-analyzer']"
+        )
+    return {"mode": mode, "agents": agents}
+
+
 def _validated_totals(payload, key, allow_null=False):
     totals = payload.get(key)
     if allow_null and totals is None:
@@ -283,6 +311,7 @@ def cmd_run_summary(payload):
     if any(separator in run_id for separator in (os.sep, os.altsep) if separator):
         raise CalcError("run-summary: 'run_id' must not contain a path separator")
     history_path = _required_string(payload, "history_path", "run-summary")
+    analysis = _validated_analysis(payload, "run-summary")
     # The summary always lands next to the history file; there is no
     # caller-controlled output path.
     output_dir = os.path.realpath(os.path.join(
@@ -324,6 +353,7 @@ def cmd_run_summary(payload):
         },
         "traditional": traditional,
         "ai_assisted": ai_assisted,
+        "analysis": analysis,
         **({"simulation": simulation} if simulation is not None else {}),
         "tasks": [
             {key: record[key] for key in ("id", "task", "category", "pert")}
@@ -634,6 +664,7 @@ def cmd_pipeline(payload):
     ai_view = payload.get("ai_view", True)
     if not isinstance(ai_view, bool):
         raise CalcError("pipeline: 'ai_view' must be a boolean")
+    analysis = _validated_analysis(payload, "pipeline")
     for i, t in enumerate(tasks):
         label = f"pipeline: tasks[{i}]"
         if not isinstance(t, dict) or not isinstance(t.get("task"), str) \
@@ -730,6 +761,7 @@ def cmd_pipeline(payload):
         "run_id": run_id, "history_path": history_path,
         "traditional": traditional["total"],
         "ai_assisted": ai_assisted["total"] if ai_assisted else None,
+        "analysis": analysis,
         "simulation": simulation,
     }
     if "boundaries" in payload:
@@ -762,6 +794,7 @@ def cmd_pipeline(payload):
         "tasks": out_tasks,
         "traditional": traditional["total"],
         "ai_assisted": ai_assisted["total"] if ai_assisted else None,
+        "analysis": analysis,
         "trials": traditional["trials"],
         "correlation": traditional["correlation"],
         "hours_per_day": traditional["hours_per_day"],

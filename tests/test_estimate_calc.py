@@ -336,11 +336,31 @@ class TestRunSummary(HistoryBase):
         base = {
             "run_id": self.appended["run_id"],
             "history_path": self.path,
+            "analysis": {
+                "mode": "quality",
+                "agents": ["spec-analyzer", "code-analyzer"],
+            },
             "traditional": {"mean": 20.5, "p50": 20.1, "p80": 24.3},
             "ai_assisted": {"mean": 10.0, "p50": 9.8, "p80": 12.0},
         }
         base.update(over)
         return base
+
+    def test_persists_validated_analysis_provenance(self):
+        analysis = {"mode": "quality", "agents": ["spec-analyzer", "code-analyzer"]}
+        out = ec.cmd_run_summary(self.payload(analysis=analysis))
+        self.assertEqual(out["schema_version"], 3)
+        self.assertEqual(out["analysis"], analysis)
+
+    def test_rejects_invalid_analysis_before_writing_summary(self):
+        for analysis in (
+            None,
+            {"mode": "economy", "agents": ["code-analyzer"]},
+            {"mode": "quality", "agents": ["spec-analyzer", "spec-analyzer"]},
+            {"mode": "unknown", "agents": ["spec-analyzer"]},
+        ):
+            with self.subTest(analysis=analysis), self.assertRaises(ec.CalcError):
+                ec.cmd_run_summary(self.payload(analysis=analysis))
 
     def test_persists_person_days_when_supplied(self):
         # The report quotes person-days; if the summary drops them the only
@@ -785,6 +805,10 @@ class TestPipeline(HistoryBase):
         base = {
             "history_path": self.path,
             "slug": "feat",
+            "analysis": {
+                "mode": "quality",
+                "agents": ["spec-analyzer", "code-analyzer"],
+            },
             "tasks": [
                 {"task": "Add endpoint", "category": "backend-api",
                  "tags": ["auth"], "o": 4, "m": 8, "p": 16,
@@ -797,6 +821,19 @@ class TestPipeline(HistoryBase):
         }
         base.update(over)
         return base
+
+    def test_returns_and_persists_analysis_provenance(self):
+        analysis = {"mode": "economy", "agents": ["spec-analyzer"]}
+        out = ec.cmd_pipeline(self.payload(analysis=analysis))
+        self.assertEqual(out["analysis"], analysis)
+        with open(os.path.join(os.path.dirname(self.path), "runs", out["run_id"] + ".json"),
+                  encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["analysis"], analysis)
+
+    def test_rejects_analysis_before_history_write(self):
+        with self.assertRaisesRegex(ec.CalcError, "pipeline: 'analysis.agents'"):
+            ec.cmd_pipeline(self.payload(analysis={"mode": "economy", "agents": []}))
+        self.assertFalse(os.path.exists(self.path))
 
     def test_returns_the_reproduction_parameters_to_its_caller(self):
         # The report template quotes distribution/trials/seed, and the skill
