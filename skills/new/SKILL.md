@@ -60,13 +60,15 @@ obtain a mode choice in step 2; do not select a mode by default.
    constraints), ask AT MOST 5 questions in one AskUserQuestion call. Skip
    this step entirely when nothing critical is missing. Record every
    unanswered gap as an assumption; assumptions widen P in step 6. In
-   `economy` mode, collect the fixed code-impact assumption and risk required
-   in step 8 for the code-affecting WBS tasks identified in step 5.
+   `economy` mode, collect the fixed general code-impact caveat; apply it to
+   the code-affecting WBS tasks only after identifying them in step 5.
 5. **WBS.** Merge per the methodology: in `quality`, the spec view defines
    WHAT and the code view defines WHERE/HOW HARD (the code view wins on
    difficulty); in `economy`, use the spec view with the code-impact
    assumptions from step 4. Produce leaf tasks (0.5–3 person-days) each with
-   category (fixed taxonomy) and tags.
+   category (fixed taxonomy) and tags. In `economy` mode, identify the
+   code-affecting leaf tasks now and attach the fixed code-impact assumption
+   and risk to them for the step 8 report.
 6. **Anchored 3-point estimates.** Call CALC `reference-class` (tasks with
    name/category/tags only) to fetch anchors. Assign raw O/M/P per task per
    the methodology, anchored when anchors exist, with a one-line rationale. In
