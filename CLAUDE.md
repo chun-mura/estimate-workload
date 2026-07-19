@@ -16,8 +16,10 @@ python3 -m pytest tests/        # run the full test suite (96 tests)
 claude --plugin-dir .           # mount this plugin locally without the marketplace, for manual testing
 ```
 
-There is no `.github/workflows/` — no CI is configured in this repo. Running
-`pytest` locally before committing is the only verification gate.
+`.github/workflows/validate.yml` runs on push/PR to `main`: validates
+`.claude-plugin/plugin.json` and `marketplace.json` as JSON, then runs the
+pytest suite. Running `pytest` locally before committing remains useful for
+fast feedback, but CI is now the enforced gate.
 
 ## Architecture
 
