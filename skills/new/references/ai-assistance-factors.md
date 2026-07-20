@@ -1,10 +1,6 @@
 # Default AI-assistance factors
 
-Multiplier applied to a task's O/M/P hours to express effort when the developer
-works with an agentic coding tool (Claude Code or similar). These defaults are
-heuristics for cold start — once `calibration` returns a learned factor for a
-category (requires ≥ 3 AI-assisted and ≥ 3 non-assisted completed records),
-the learned factor wins.
+Multiplier applied to a task's O/M/P hours to express effort when the developer works with an agentic coding tool. These defaults are heuristics for cold start — once `calibration` returns a learned factor for a category (requires ≥ 3 AI-assisted and ≥ 3 non-assisted completed records), the learned factor wins.
 
 | Category | Default factor | Why |
 |---|---|---|
@@ -15,6 +11,4 @@ the learned factor wins.
 | `test-only` | 0.40 | Test generation is a strong AI use case |
 | `docs` | 0.35 | Drafting automates almost entirely; review remains |
 
-The factor model is deliberately simple (hours × factor). It captures tool
-leverage, not skill differences. Present AI-assisted totals as a planning view,
-not a promise.
+The factor model is deliberately simple (hours × factor). It captures tool leverage, not skill differences. Present AI-assisted totals as a planning view, not a promise.

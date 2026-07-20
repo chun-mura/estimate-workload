@@ -141,7 +141,7 @@ AI支援係数は、各カテゴリで AI支援あり・なしの完了実績が
 
 ## v1 の制約
 
-- **固定カテゴリ体系** — タスクは少数の組み込みカテゴリに分類されます（`skills/estimation-methodology/references/category-taxonomy.md`）。現時点では独自カテゴリを追加できません。
+- **固定カテゴリ体系** — タスクは少数の組み込みカテゴリに分類されます（`skills/new/references/category-taxonomy.md`）。現時点では独自カテゴリを追加できません。
 - **フックと MCP は未対応** — スキル、エージェント主体のワークフロー、独立した計算スクリプトで構成されます。Claude Code のフックや MCP サーバーは登録しません。
 
 ## バージョニング

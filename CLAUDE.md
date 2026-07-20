@@ -62,7 +62,7 @@ enforced in the skill instructions, not just a suggestion.
 ### `--ai-view` / `--no-ai-view`
 
 Whether the report includes a second, AI-assisted effort total (task hours ×
-a per-category factor from `skills/estimation-methodology/references/ai-assistance-factors.md`,
+a per-category factor from `skills/new/references/ai-assistance-factors.md`,
 overridden by a *learned* factor once a category has ≥3 AI-assisted and ≥3
 non-assisted completed records — learned always wins over default; this
 happens inside `estimate_calc.py`, not in skill logic).
@@ -99,8 +99,9 @@ existing version number for a changed formula.
   argparse CLI: `estimate_calc.py <subcommand> --input <file|->` reads JSON,
   writes JSON to stdout, and on error writes `{"error": ...}` to stderr with
   exit code 1. It has zero knowledge of Claude, prompts, or report formatting.
-- `skills/` (`new`, `record`, `estimation-methodology`) own orchestration,
-  wording, report structure, and when to ask the user questions. They call
+- `skills/` (`new`, `record`) own orchestration, wording, report structure,
+  and when to ask the user questions. `new/references/` holds its explicitly
+  loaded estimation methodology and supporting constants. They call
   CALC (`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/estimate_calc.py"`) for
   every number and must stop on any CALC failure rather than falling back to
   freehand math.
@@ -114,7 +115,7 @@ and keep prompt/orchestration logic out of it.
 ## v1 constraints
 
 - **Fixed category taxonomy** — exactly six categories
-  (`skills/estimation-methodology/references/category-taxonomy.md`):
+  (`skills/new/references/category-taxonomy.md`):
   `backend-api`, `frontend-ui`, `db-migration`, `infra`, `test-only`, `docs`.
   `estimate_calc.py`'s `CATEGORIES` set rejects anything else. There is no
   mechanism yet for project-specific categories — a task spanning two

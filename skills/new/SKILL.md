@@ -5,8 +5,8 @@ argument-hint: [--mode quality|economy] [--ai-view|--no-ai-view] [--id <design-i
 
 # /estimate:new
 
-First read `${CLAUDE_PLUGIN_ROOT}/skills/estimation-methodology/SKILL.md` and
-its `references/category-taxonomy.md`, and follow them exactly. Read
+First read `${CLAUDE_PLUGIN_ROOT}/skills/new/references/methodology.md` and
+its sibling `category-taxonomy.md`, and follow them exactly. Read
 `references/ai-assistance-factors.md` only after step 2 confirms the
 AI-assisted view is included. CALC below means
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/estimate_calc.py"`. The history file is
@@ -143,15 +143,8 @@ mode by default.
    `- 解析モード: economy`, copied from `pipeline.analysis.mode`. For an
    `economy` report, include these exact entries in their designated sections:
 
-   ```markdown
-   ## 前提条件
-   - 実装複雑度はリポジトリ影響分析なしで見積もった。
-
-   ## リスク
-   | リスク | 影響 | 対応 |
-   |---|---|---|
-   | 隠れた結合・統合点・既存テスト範囲が未検証 | 工数がPを超過する可能性 | 実装前にコード影響分析を実施する |
-   ```
+   Read `references/economy-report-boilerplate.md` and copy its exact blocks
+   into the designated report sections.
    The history file is authoritative; the report is a point-in-time snapshot
    and is never edited afterward.
 9. **Chat summary.** Do NOT repeat the full report in chat. Give a compact

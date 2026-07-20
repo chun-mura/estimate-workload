@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-20
+
+### 変更
+
+- `estimation-methodology` を自動発火するスキルから `skills/new/references/methodology.md` へ移し、`/estimate:new` が必要時に明示読込する構成へ変更した。分類体系と AI 支援係数も同じ references 配下へ集約した。
+- `/estimate:new` の economy モード定型文を reference へ移し、実行契約を保ったまま本文を圧縮した。
+
 ## [0.7.1] - 2026-07-19
 
 ### 変更
