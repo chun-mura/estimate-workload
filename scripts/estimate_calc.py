@@ -110,6 +110,26 @@ def validate_three_point(task, label):
         raise CalcError(f"{label}: requires o <= m <= p")
 
 
+def granularity_warnings(tasks):
+    """Return recommended task-granularity warnings for raw M estimates.
+
+    The recommendation is advisory: values below 4h or above 24h are reported
+    without rejecting the estimate or changing any input values.
+    """
+    warnings = []
+    for task in tasks:
+        m = task.get("m")
+        if m < 4:
+            kind = "below_recommended"
+        elif m > 24:
+            kind = "above_recommended"
+        else:
+            continue
+        warnings.append({"task": task["task"], "field": "m",
+                         "value": m, "kind": kind})
+    return warnings
+
+
 def triangular_inv_cdf(u, o, m, p):
     """u が [0, 1] のときの Triangular(o, m, p) の逆累積分布関数。"""
     if o == p:
@@ -722,6 +742,7 @@ def cmd_pipeline(payload):
         "hours_per_day": traditional["hours_per_day"],
         "simulation": simulation,
         "warnings": ref["warnings"],
+        "granularity_warnings": granularity_warnings(tasks),
     }
     if run_context is not None:
         result.update({"run_context": run_context, "run_summary": run_summary})

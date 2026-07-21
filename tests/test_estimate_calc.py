@@ -660,6 +660,29 @@ class TestPipeline(HistoryBase):
             os.path.dirname(self.path), "runs", out["run_id"] + ".json"
         )))
 
+    def test_pipeline_returns_granularity_warnings_without_blocking_history_write(self):
+        tasks = [
+            {"task": "Small", "category": "backend-api", "tags": [],
+             "o": 1, "m": 3, "p": 5, "default_factor": 0.5},
+            {"task": "Boundary low", "category": "backend-api", "tags": [],
+             "o": 2, "m": 4, "p": 6, "default_factor": 0.5},
+            {"task": "Boundary high", "category": "backend-api", "tags": [],
+             "o": 12, "m": 24, "p": 30, "default_factor": 0.5},
+            {"task": "Large", "category": "backend-api", "tags": [],
+             "o": 20, "m": 25, "p": 40, "default_factor": 0.5},
+        ]
+        out = ec.cmd_pipeline(self.payload(tasks=tasks, run_context=self.VALID_CONTEXT))
+        self.assertEqual(
+            [w["kind"] for w in out["granularity_warnings"]],
+            ["below_recommended", "above_recommended"],
+        )
+        self.assertEqual(
+            out["granularity_warnings"][0],
+            {"task": "Small", "field": "m", "value": 3,
+             "kind": "below_recommended"},
+        )
+        self.assertEqual(len(self.raw_lines()), 4)
+
     def test_run_summary_is_not_a_payload_command(self):
         self.assertNotIn("run-summary", ec.PAYLOAD_COMMANDS)
 
