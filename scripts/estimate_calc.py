@@ -65,7 +65,9 @@ def validate_run_context(value):
         if not isinstance(value[key], bool):
             raise CalcError(f"run_context.{key} must be a boolean")
     for key in ("hours_per_day", "correlation"):
-        if not _is_number(value[key]) or value[key] <= 0 or (key == "correlation" and value[key] > 1):
+        if (not _is_number(value[key]) or
+                (key == "hours_per_day" and value[key] <= 0) or
+                (key == "correlation" and not 0 <= value[key] <= 1)):
             raise CalcError(f"run_context.{key} must be a finite positive number")
     for key in ("sources", "exclusions", "dependencies", "assumptions"):
         if not isinstance(value[key], list) or not all(isinstance(x, str) and x for x in value[key]):
