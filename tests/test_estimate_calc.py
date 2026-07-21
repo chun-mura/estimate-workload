@@ -633,6 +633,14 @@ class TestPipeline(HistoryBase):
         self.assertEqual(warnings, [])
         self.assertEqual(records[-1]["schema_version"], 3)
 
+    def test_v3_run_summary_preserves_reproduction_seeds(self):
+        out = ec.cmd_pipeline(self.payload(run_context=self.VALID_CONTEXT))
+        rec = json.loads(self.raw_lines()[0])
+        self.assertEqual(rec["run_summary"]["simulation"]["traditional_seed"],
+                         out["simulation"]["traditional_seed"])
+        self.assertEqual(rec["run_summary"]["simulation"]["ai_assisted_seed"],
+                         out["simulation"]["ai_assisted_seed"])
+
     def test_returns_analysis_and_simulation_without_summary(self):
         analysis = {"mode": "economy", "agents": ["spec-analyzer"]}
         out = ec.cmd_pipeline(self.payload(analysis=analysis))

@@ -677,7 +677,9 @@ def cmd_pipeline(payload):
         "simulation": {"distribution": traditional["distribution"],
                         "trials": traditional["trials"],
                         "correlation": traditional["correlation"],
-                        "hours_per_day": traditional["hours_per_day"]},
+                        "hours_per_day": traditional["hours_per_day"],
+                        "traditional_seed": traditional["seed"],
+                        "ai_assisted_seed": ai_assisted["seed"] if ai_assisted else None},
     }
     if run_context is not None:
         append_payload.update({"schema_version": SCHEMA_VERSION,
