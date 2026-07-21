@@ -150,14 +150,17 @@ default.
    values come directly from `pipeline.simulation`. If `pipeline` did not
    return a `run_id`, do NOT write a report at all — report the failure and stop.
    In `## 見積もり手法`, include exactly `- 解析モード: quality` or
-   `- 解析モード: economy`, copied from `pipeline.analysis.mode`. For an
-   `economy` report, include these exact entries in their designated sections:
+   `- 解析モード: economy`, copied from `pipeline.analysis.mode`.
 
-   When `qa_included` is true, `## 前提条件` must state that QA is included by
-   default and list Test planning and test-case preparation; Functional
-   verification in an integrated environment; Integration, E2E, and regression testing; and Defect verification and retesting. When `qa_included` is false,
-   `## スコープ外` must state that `--no-qa` excluded those same four QA
-   activities.
+   In every report, when `qa_included` is true, `## 前提条件` must state that
+   QA is included by default and list Test planning and test-case preparation;
+   Functional verification in an integrated environment; Integration, E2E, and
+   regression testing; and Defect verification and retesting. When
+   `qa_included` is false, `## スコープ外` must state that `--no-qa` excluded
+   those same four QA activities.
+
+   For an `economy` report, include these exact entries in their designated
+   sections:
 
    Read `references/economy-report-boilerplate.md` and copy its exact blocks
    into the designated report sections.
