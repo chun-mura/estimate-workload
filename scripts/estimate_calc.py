@@ -23,11 +23,12 @@ import tempfile
 import time
 from datetime import datetime
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+LEGACY_SCHEMA_VERSION = 2
 # v1 レコードの 'pert' は beta-PERT (o+4m+p)/6 で計算されており、
 # cmd_simulate が標本を取る三角分布とは一致しない。基準を混在させると
 # キャリブレーション比率が壊れるため、v1 レコードは警告付きで除外する。
-KNOWN_SCHEMA_VERSIONS = {2}
+KNOWN_SCHEMA_VERSIONS = {2, 3}
 CATEGORIES = {"backend-api", "frontend-ui", "db-migration", "infra", "test-only", "docs"}
 DEFAULT_TRIALS = 10_000
 DEFAULT_CORRELATION = 0.3
@@ -42,6 +43,34 @@ LOW_SAMPLE_THRESHOLD = 10
 
 class CalcError(Exception):
     """ユーザー向けの検証エラーまたは状態エラー。"""
+
+
+def validate_run_context(value):
+    """Validate and return the immutable context attached to v3 runs."""
+    if not isinstance(value, dict):
+        raise CalcError("run_context must be an object")
+    required = ("comparison_key", "qa_included", "ai_view", "analysis_mode",
+                "hours_per_day", "correlation", "sources", "scope",
+                "exclusions", "dependencies", "assumptions")
+    extra = set(value) - set(required)
+    if extra:
+        raise CalcError(f"run_context: unknown keys {sorted(extra)}")
+    for key in required:
+        if key not in value:
+            raise CalcError(f"run_context requires '{key}'")
+    for key in ("comparison_key", "analysis_mode", "scope"):
+        if not isinstance(value[key], str) or not value[key]:
+            raise CalcError(f"run_context.{key} must be a non-empty string")
+    for key in ("qa_included", "ai_view"):
+        if not isinstance(value[key], bool):
+            raise CalcError(f"run_context.{key} must be a boolean")
+    for key in ("hours_per_day", "correlation"):
+        if not _is_number(value[key]) or value[key] <= 0 or (key == "correlation" and value[key] > 1):
+            raise CalcError(f"run_context.{key} must be a finite positive number")
+    for key in ("sources", "exclusions", "dependencies", "assumptions"):
+        if not isinstance(value[key], list) or not all(isinstance(x, str) and x for x in value[key]):
+            raise CalcError(f"run_context.{key} must be a list of strings")
+    return dict(value)
 
 
 def percentile(values, q):
@@ -139,7 +168,7 @@ def cmd_simulate(payload):
         totals.append(total)
     p50 = percentile(totals, 50)
     p80 = percentile(totals, 80)
-    return {
+    result = {
         "tasks": [
             {"name": t["name"], "pert": triangular_mean(t["o"], t["m"], t["p"])}
             for t in scaled
@@ -159,6 +188,7 @@ def cmd_simulate(payload):
         "distribution": DISTRIBUTION,
         "seed": seed,
     }
+    return result
 
 
 def schema_error(rec):
@@ -189,6 +219,13 @@ def schema_error(rec):
         return "'ai_assisted' must be null or a boolean"
     if rec.get("status") not in ("estimated", "done"):
         return f"unknown status: {rec.get('status')!r}"
+    if sv == 3:
+        try:
+            validate_run_context(rec.get("run_context"))
+        except CalcError as exc:
+            return str(exc)
+        if not isinstance(rec.get("run_summary"), dict):
+            return "v3 record requires run_summary"
     return None
 
 
@@ -280,6 +317,16 @@ def cmd_append_history(payload):
     ):
         raise CalcError("append-history: 'slug' must be alphanumeric/hyphens")
     tasks = payload.get("tasks")
+    record_schema = payload.get("schema_version", LEGACY_SCHEMA_VERSION)
+    if record_schema not in (LEGACY_SCHEMA_VERSION, SCHEMA_VERSION):
+        raise CalcError("append-history: unsupported schema_version")
+    context = None
+    summary = None
+    if record_schema == SCHEMA_VERSION:
+        context = validate_run_context(payload.get("run_context"))
+        summary = payload.get("run_summary")
+        if not isinstance(summary, dict):
+            raise CalcError("append-history: run_summary must be an object")
     if not isinstance(tasks, list) or not tasks:
         raise CalcError("append-history: 'tasks' must be a non-empty list")
     for i, t in enumerate(tasks):
@@ -310,7 +357,7 @@ def cmd_append_history(payload):
         lines = []
         for i, t in enumerate(tasks, 1):
             rec = {
-                "schema_version": SCHEMA_VERSION,
+                "schema_version": record_schema,
                 "run_id": run_id,
                 "id": f"{run_id}-{i:02d}",
                 "date": now.strftime("%Y-%m-%d"),
@@ -325,6 +372,9 @@ def cmd_append_history(payload):
                 "ai_assisted": None,
                 "status": "estimated",
             }
+            if record_schema == SCHEMA_VERSION:
+                rec["run_context"] = context
+                rec["run_summary"] = summary
             lines.append(json.dumps(rec, ensure_ascii=False))
         data = ("\n".join(lines) + "\n").encode("utf-8")
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
@@ -540,6 +590,9 @@ def cmd_pipeline(payload):
     if not isinstance(ai_view, bool):
         raise CalcError("pipeline: 'ai_view' must be a boolean")
     analysis = _validated_analysis(payload, "pipeline")
+    run_context = None
+    if "run_context" in payload:
+        run_context = validate_run_context(payload.get("run_context"))
     for i, t in enumerate(tasks):
         label = f"pipeline: tasks[{i}]"
         if not isinstance(t, dict) or not isinstance(t.get("task"), str) \
@@ -619,6 +672,17 @@ def cmd_pipeline(payload):
     }
     if "lock_timeout" in payload:
         append_payload["lock_timeout"] = payload["lock_timeout"]
+    run_summary = {
+        "traditional": traditional["total"],
+        "simulation": {"distribution": traditional["distribution"],
+                        "trials": traditional["trials"],
+                        "correlation": traditional["correlation"],
+                        "hours_per_day": traditional["hours_per_day"]},
+    }
+    if run_context is not None:
+        append_payload.update({"schema_version": SCHEMA_VERSION,
+                               "run_context": run_context,
+                               "run_summary": run_summary})
     run_id = cmd_append_history(append_payload)["run_id"]
 
     # レポートへ再現条件を記録できるよう、呼び出し元へ返す。
@@ -643,7 +707,7 @@ def cmd_pipeline(payload):
         if ai_view:
             out["ai_factor"] = factors[i]
         out_tasks.append(out)
-    return {
+    result = {
         "run_id": run_id,
         "tasks": out_tasks,
         "traditional": traditional["total"],
@@ -655,6 +719,9 @@ def cmd_pipeline(payload):
         "simulation": simulation,
         "warnings": ref["warnings"],
     }
+    if run_context is not None:
+        result.update({"run_context": run_context, "run_summary": run_summary})
+    return result
 
 
 def cmd_distribute(payload):

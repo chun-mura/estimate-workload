@@ -580,6 +580,19 @@ class TestCalibration(TestReferenceClass):
 
 
 class TestPipeline(HistoryBase):
+    VALID_CONTEXT = {
+        "comparison_key": "A-AR-001",
+        "qa_included": True,
+        "ai_view": True,
+        "analysis_mode": "quality",
+        "hours_per_day": 8,
+        "correlation": 0.3,
+        "sources": ["spec.md"],
+        "scope": "in scope",
+        "exclusions": ["ops"],
+        "dependencies": ["API"],
+        "assumptions": ["pattern exists"],
+    }
     def write_done(self, records):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         with open(self.path, "a", encoding="utf-8") as fh:
@@ -606,6 +619,19 @@ class TestPipeline(HistoryBase):
         }
         base.update(over)
         return base
+
+    def test_pipeline_rejects_invalid_v3_run_context_before_history_write(self):
+        with self.assertRaisesRegex(ec.CalcError, "run_context.*comparison_key"):
+            ec.cmd_pipeline(self.payload(run_context={}))
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_read_history_accepts_existing_v2_and_valid_v3_records(self):
+        self.append()
+        ec.cmd_pipeline(self.payload(run_context=self.VALID_CONTEXT))
+        records, warnings = ec.read_history(self.path)
+        self.assertEqual(len(records), 3)
+        self.assertEqual(warnings, [])
+        self.assertEqual(records[-1]["schema_version"], 3)
 
     def test_returns_analysis_and_simulation_without_summary(self):
         analysis = {"mode": "economy", "agents": ["spec-analyzer"]}
