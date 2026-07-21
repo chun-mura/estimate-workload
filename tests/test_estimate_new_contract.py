@@ -12,6 +12,14 @@ class TestEstimateNewQaContract(unittest.TestCase):
                          "O/M/P の単位は時間", "30%", "楽観・標準・悲観"):
             self.assertIn(required, text)
 
+    def test_compare_to_has_strict_option_validation_and_risk_rule(self):
+        text = SKILL.read_text(encoding="utf-8")
+        self.assertIn("--compare-to` value must be non-empty", text)
+        self.assertIn("duplicate", text)
+        self.assertIn("unknown leading", text)
+        self.assertIn("## リスク", text)
+        self.assertIn("リスク表に1行", text)
+
     def test_qa_is_default_and_can_only_be_explicitly_excluded(self):
         text = SKILL.read_text(encoding="utf-8")
         self.assertIn("--no-qa", text)

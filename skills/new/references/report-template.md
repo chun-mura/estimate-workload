@@ -78,6 +78,7 @@ A run-to-run difference in structure is a defect, not a style choice.
 | リスク | 影響 | 対応 |
 |---|---|---|
 | <risk> | <impact> | <mitigation> |
+| <比較差分が未解消の場合は必須: 差分内容> | <P50/P80への影響> | <スコープ・前提・WBS対応の再確認、または実績記録> |
 
 エージェント失敗・CALC の部分失敗があれば、必ずここに1行で記録する。
 

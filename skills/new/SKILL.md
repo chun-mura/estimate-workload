@@ -31,6 +31,9 @@ appear at most once; `--ai-view` and `--no-ai-view` are mutually exclusive.
 `<letters>-<letters>-<three digits or 統合>`, such as `a-ar-001` or
 `a-da-統合`; normalize it to lowercase. A missing or invalid `--mode` or
 `--id` value, any duplicate (including `--no-qa`) or conflicting option, or an unknown leading
+`--compare-to` value must be non-empty; a missing value, duplicate occurrence,
+or malformed run-id is an input error. Any missing/invalid value, duplicate
+option (including `--compare-to`), conflicting option, or unknown leading
 `--...` option is an input error: stop before intake, agent dispatch, or
 CALC. Resolve `qa_included` to `false` only when `--no-qa` appears; otherwise
 resolve it to `true`. QA is included by default. No other option excludes QA.
@@ -141,7 +144,10 @@ default.
    `pipeline`. If absolute P50 difference is 30% or more, or `context_diff`
    is non-empty, reconcile scope, assumptions, and WBS correspondence before
    writing the report. If unresolved, record optimistic, standard, and
-   pessimistic adopted values and reasons (楽観・標準・悲観) under `## 前提条件` and `## リスク`.
+   pessimistic adopted values and reasons (楽観・標準・悲観) under `## 前提条件`.
+   Also add one explicit row (リスク表に1行) to the existing `## リスク` table describing the
+   unresolved comparison, its P50/P80 impact, and the reconciliation action;
+   never omit this risk row.
 8. **Report file.** Read
    `${CLAUDE_PLUGIN_ROOT}/skills/new/references/report-template.md` and follow
    it exactly — its section order, heading text, and table columns are fixed, so
