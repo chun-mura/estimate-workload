@@ -44,6 +44,7 @@ claude --plugin-dir .
 /estimate:new --mode economy docs/spec.md docs/tasks.md
 /estimate:new --mode quality --ai-view docs/spec.md docs/tasks.md
 /estimate:new --mode economy --no-ai-view docs/spec.md docs/tasks.md
+/estimate:new --mode quality --no-qa docs/spec.md docs/tasks.md
 ```
 
 1回の実行は、関連するタスク群1件分です。共有分析を繰り返さないため、関連タスクは1回にまとめてください。独立した複数コマンドは、別タスク群として扱われます。
@@ -56,6 +57,17 @@ claude --plugin-dir .
 4. `docs/estimates/` 配下へレポートを保存し、`run_id` を表示する
 
 レポートはすべて `skills/new/references/report-template.md` の固定構造に従うため、実行ごとに比較できます。
+
+#### QA範囲（既定で含む）
+
+QA は既定で見積もりに含まれます。対象は次の4項目です。
+
+1. テスト計画とテストケースの準備
+2. 統合環境での機能検証
+3. 結合・E2E・回帰テスト
+4. 不具合の確認と再テスト
+
+単体テストおよび開発中の確認は、実装タスクに含まれるため重複計上しません。QA を別途見積もる場合、またはスコープ外とする場合は、`--no-qa` を指定してください。
 
 #### モード（`--mode`）
 

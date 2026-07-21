@@ -105,3 +105,6 @@ A run-to-run difference in structure is a defect, not a style choice.
   `| 隠れた結合・統合点・既存テスト範囲が未検証 | 工数がPを超過する可能性 | 実装前にコード影響分析を実施する |`.
 - `## リスク` and `## スコープ外` are never omitted. If there is nothing to
   write, state `該当なし` rather than deleting the section.
+- When QA is included, document its scope in `## 前提条件`. When the user
+  explicitly specified `--no-qa`, document the QA exclusion in `## スコープ外`.
+  Do not add or rename top-level headings.
