@@ -16,6 +16,9 @@ class TestEstimateNewQaContract(unittest.TestCase):
         changelog = CHANGELOG.read_text(encoding="utf-8")
         for required in ("0.10.0", "粒度", "比較", "v3", "run_context"):
             self.assertIn(required, changelog)
+        unreleased = changelog.split("## [Unreleased]", 1)[1].split("\n## ", 1)[0]
+        for required in ("粒度", "比較", "run_context", "30%"):
+            self.assertIn(required, unreleased)
 
     def test_skill_requires_hour_units_context_and_reconciliation_gate(self):
         text = SKILL.read_text(encoding="utf-8")
