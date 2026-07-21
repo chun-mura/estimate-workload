@@ -592,6 +592,7 @@ class TestPipeline(HistoryBase):
         "exclusions": ["ops"],
         "dependencies": ["API"],
         "assumptions": ["pattern exists"],
+        "unit": "hours",
     }
     def write_done(self, records):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
@@ -873,6 +874,24 @@ class TestCompareRuns(HistoryBase):
                                    "baseline_run_id": base["run_id"],
                                    "candidate_run_id": base["run_id"]})
         self.assertEqual(out["reason"], "non_unique_run_context")
+
+    def test_compare_runs_rejects_mixed_context_presence(self):
+        base = ec.cmd_pipeline(self._payload("base"))
+        lines = self.raw_lines()
+        rec = json.loads(lines[0])
+        rec["schema_version"] = 2
+        rec.pop("run_context")
+        rec.pop("run_summary")
+        with open(self.path, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec) + "\n")
+            fh.write(lines[0])
+        out = ec.cmd_compare_runs({"history_path": self.path,
+                                   "baseline_run_id": base["run_id"],
+                                   "candidate_run_id": base["run_id"]})
+        self.assertFalse(out["comparable"])
+        self.assertEqual(out["reason"], "mixed_run_context")
+        self.assertEqual(out["details"]["baseline_present"], 1)
+        self.assertEqual(out["details"]["baseline_total"], 2)
 
 
 class TestDistribute(unittest.TestCase):

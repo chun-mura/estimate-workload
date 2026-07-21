@@ -51,7 +51,7 @@ def validate_run_context(value):
         raise CalcError("run_context must be an object")
     required = ("comparison_key", "qa_included", "ai_view", "analysis_mode",
                 "hours_per_day", "correlation", "sources", "scope",
-                "exclusions", "dependencies", "assumptions")
+                "exclusions", "dependencies", "assumptions", "unit")
     extra = set(value) - set(required)
     if extra:
         raise CalcError(f"run_context: unknown keys {sorted(extra)}")
@@ -61,6 +61,8 @@ def validate_run_context(value):
     for key in ("comparison_key", "analysis_mode", "scope"):
         if not isinstance(value[key], str) or not value[key]:
             raise CalcError(f"run_context.{key} must be a non-empty string")
+    if value["unit"] != "hours":
+        raise CalcError("run_context.unit must be 'hours'")
     for key in ("qa_included", "ai_view"):
         if not isinstance(value[key], bool):
             raise CalcError(f"run_context.{key} must be a boolean")
@@ -484,9 +486,11 @@ def cmd_compare_runs(payload):
                     for r in rows if r.get("run_context") is not None}
         summaries = {json.dumps(r.get("run_summary"), sort_keys=True)
                      for r in rows if r.get("run_summary") is not None}
+        context_present = sum(r.get("run_context") is not None for r in rows)
+        summary_present = sum(r.get("run_summary") is not None for r in rows)
         context = json.loads(next(iter(contexts))) if len(contexts) == 1 else None
         summary = json.loads(next(iter(summaries))) if len(summaries) == 1 else None
-        return rows, context, summary, len(contexts), len(summaries)
+        return rows, context, summary, len(contexts), len(summaries), context_present, summary_present
 
     base, cand = collect(baseline_id), collect(candidate_id)
     if base is None or cand is None:
@@ -494,9 +498,21 @@ def cmd_compare_runs(payload):
     if base[3] > 1 or cand[3] > 1:
         return {"comparable": False, "reason": "non_unique_run_context",
                 "details": {"baseline_count": base[3], "candidate_count": cand[3]}}
+    if (0 < base[5] < len(base[0])) or (0 < cand[5] < len(cand[0])):
+        return {"comparable": False, "reason": "mixed_run_context",
+                "details": {"baseline_present": base[5],
+                            "baseline_total": len(base[0]),
+                            "candidate_present": cand[5],
+                            "candidate_total": len(cand[0])}}
     if base[4] > 1 or cand[4] > 1:
         return {"comparable": False, "reason": "non_unique_run_summary",
                 "details": {"baseline_count": base[4], "candidate_count": cand[4]}}
+    if (0 < base[6] < len(base[0])) or (0 < cand[6] < len(cand[0])):
+        return {"comparable": False, "reason": "mixed_run_summary",
+                "details": {"baseline_present": base[6],
+                            "baseline_total": len(base[0]),
+                            "candidate_present": cand[6],
+                            "candidate_total": len(cand[0])}}
     if base[1] is None or cand[1] is None:
         return {"comparable": False, "reason": "missing_run_context",
                 "details": {"baseline": base[3] == 0, "candidate": cand[3] == 0}}
