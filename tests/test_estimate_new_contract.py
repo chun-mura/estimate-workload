@@ -1,11 +1,22 @@
 import pathlib
+import json
 import unittest
 
 
 SKILL = pathlib.Path(__file__).resolve().parent.parent / "skills" / "new" / "SKILL.md"
+ROOT = SKILL.parent.parent.parent
+PLUGIN = ROOT / ".claude-plugin" / "plugin.json"
+CHANGELOG = ROOT / "CHANGELOG.md"
 
 
 class TestEstimateNewQaContract(unittest.TestCase):
+    def test_release_metadata_contract(self):
+        plugin = json.loads(PLUGIN.read_text(encoding="utf-8"))
+        self.assertEqual(plugin["version"], "0.10.0")
+        changelog = CHANGELOG.read_text(encoding="utf-8")
+        for required in ("0.10.0", "粒度", "比較", "v3", "run_context"):
+            self.assertIn(required, changelog)
+
     def test_skill_requires_hour_units_context_and_reconciliation_gate(self):
         text = SKILL.read_text(encoding="utf-8")
         for required in ("--compare-to", "comparison_key", "granularity_warnings",
