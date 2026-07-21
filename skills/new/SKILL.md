@@ -1,6 +1,6 @@
 ---
 description: Produce a scientifically-grounded effort estimate (WBS + 3-point + Monte Carlo + reference-class calibration) from any mix of design docs, issues, or free-text requirements, plus codebase analysis. Use when the user asks to estimate effort, workload, or delivery time for described work.
-argument-hint: [--mode quality|economy] [--ai-view|--no-ai-view] [--id <design-id>] [file paths and/or a description]
+argument-hint: [--mode quality|economy] [--ai-view|--no-ai-view] [--no-qa] [--id <design-id>] [file paths and/or a description]
 ---
 
 # /estimate:new
@@ -18,30 +18,34 @@ Input: $ARGUMENTS (any mix of paths, pasted text, or a short description).
 Examples:
 - `/estimate:new --mode quality --ai-view docs/spec.md` skips both intake choices.
 - `/estimate:new --no-ai-view docs/spec.md` asks only for the mode.
+- `/estimate:new --no-qa docs/spec.md` excludes the default QA effort.
 - `/estimate:new --id a-ar-001 docs/spec.md` writes a report whose filename
   includes `a-ar-001`.
 - `/estimate:new docs/spec.md` keeps the existing mode-and-AI-view question.
 
-Options: before sources, accept `--mode quality|economy`, `--ai-view`, and
-`--no-ai-view`, and `--id <design-id>` in any order. Remove all recognized
-options before treating the remainder as sources. Each option may appear at
-most once; `--ai-view` and `--no-ai-view` are mutually exclusive. `--mode
-quality --ai-view --id a-ar-001` is valid. `design-id` must match
+Options: before sources, accept `--mode quality|economy`, `--ai-view`,
+`--no-ai-view`, `--no-qa`, and `--id <design-id>` in any order. Remove all
+recognized options before treating the remainder as sources. Each option may
+appear at most once; `--ai-view` and `--no-ai-view` are mutually exclusive.
+`--mode quality --ai-view --no-qa --id a-ar-001` is valid. `design-id` must match
 `<letters>-<letters>-<three digits or 統合>`, such as `a-ar-001` or
 `a-da-統合`; normalize it to lowercase. A missing or invalid `--mode` or
-`--id` value, any duplicate or conflicting option, or an unknown leading
+`--id` value, any duplicate (including `--no-qa`) or conflicting option, or an unknown leading
 `--...` option is an input error: stop before intake, agent dispatch, or
-CALC. With no mode flag, obtain a mode choice in step 2; do not select a
-mode by default.
+CALC. Resolve `qa_included` to `false` only when `--no-qa` appears; otherwise
+resolve it to `true`. QA is included by default. No other option excludes QA.
+With no mode flag, obtain a mode choice in step 2; do not select a mode by
+default.
 
 ## Steps
 
 1. **Mode-aware intake.** Validate and remove all leading options exactly as
    the Options contract requires, resolving `mode` to `quality`, `economy`, or
-   unspecified, `ai_view` to `true`, `false`, or unspecified, and `report_id`
-   to the explicit normalized ID or unspecified. Then check every remaining
-   provided path exists and is readable (a single `ls` is enough), without
-   reading its contents. Do NOT read document contents into this context — the
+   unspecified, `ai_view` to `true`, `false`, or unspecified, `qa_included`
+   to `true` unless `--no-qa` was supplied, and `report_id` to the explicit
+   normalized ID or unspecified. Then check every remaining provided path
+   exists and is readable (a single `ls` is enough), without reading its
+   contents. Do NOT read document contents into this context — the
    spec-analyzer reads them in full in step 3; reading them twice wastes
    context. For each unreadable or missing path: tell the user, treat it as
    not provided, and carry the gap into step 4. If `report_id` is unspecified,
@@ -87,7 +91,13 @@ mode by default.
    assumptions from step 4. Produce leaf tasks (0.5–3 person-days) with
    concise Japanese verb-first task names, category (fixed taxonomy), and
    tags. Technical identifiers such as API, framework, file, and schema names
-   may remain in English. In `economy` mode, identify the
+   may remain in English. When `qa_included` is true, add applicable
+   `test-only` leaf tasks for Test planning and test-case preparation;
+   Functional verification in an integrated environment; Integration, E2E, and regression testing; and Defect verification and retesting. Split or
+   combine these QA tasks as needed to preserve the 0.5–3 person-day rule.
+   Unit tests and in-development checks remain part of implementation tasks
+   and must not be counted again as QA. When `qa_included` is false, do not
+   add these QA tasks. In `economy` mode, identify the
    code-affecting leaf tasks now and attach the fixed code-impact assumption
    and risk to them for the step 8 report.
 6. **Anchored 3-point estimates.** Call CALC `reference-class` (tasks with
@@ -142,6 +152,12 @@ mode by default.
    In `## 見積もり手法`, include exactly `- 解析モード: quality` or
    `- 解析モード: economy`, copied from `pipeline.analysis.mode`. For an
    `economy` report, include these exact entries in their designated sections:
+
+   When `qa_included` is true, `## 前提条件` must state that QA is included by
+   default and list Test planning and test-case preparation; Functional
+   verification in an integrated environment; Integration, E2E, and regression testing; and Defect verification and retesting. When `qa_included` is false,
+   `## スコープ外` must state that `--no-qa` excluded those same four QA
+   activities.
 
    Read `references/economy-report-boilerplate.md` and copy its exact blocks
    into the designated report sections.
