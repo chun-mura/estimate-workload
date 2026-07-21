@@ -862,6 +862,18 @@ class TestCompareRuns(HistoryBase):
         self.assertFalse(out["comparable"])
         self.assertEqual(out["reason"], "missing_run_context")
 
+    def test_compare_runs_reports_non_unique_context(self):
+        base = ec.cmd_pipeline(self._payload("base"))
+        lines = self.raw_lines()
+        rec = json.loads(lines[0])
+        rec["run_context"] = dict(rec["run_context"], scope="changed")
+        with open(self.path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec) + "\n")
+        out = ec.cmd_compare_runs({"history_path": self.path,
+                                   "baseline_run_id": base["run_id"],
+                                   "candidate_run_id": base["run_id"]})
+        self.assertEqual(out["reason"], "non_unique_run_context")
+
 
 class TestDistribute(unittest.TestCase):
     def test_proportional_split_sums_to_total(self):

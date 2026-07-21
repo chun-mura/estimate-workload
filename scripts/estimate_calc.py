@@ -491,18 +491,18 @@ def cmd_compare_runs(payload):
     base, cand = collect(baseline_id), collect(candidate_id)
     if base is None or cand is None:
         return {"comparable": False, "reason": "run_not_found"}
-    if base[1] is None or cand[1] is None:
-        return {"comparable": False, "reason": "missing_run_context",
-                "details": {"baseline": base[3] == 0, "candidate": cand[3] == 0}}
     if base[3] > 1 or cand[3] > 1:
         return {"comparable": False, "reason": "non_unique_run_context",
                 "details": {"baseline_count": base[3], "candidate_count": cand[3]}}
-    if base[2] is None or cand[2] is None:
-        return {"comparable": False, "reason": "missing_run_summary",
-                "details": {"baseline": base[4] == 0, "candidate": cand[4] == 0}}
     if base[4] > 1 or cand[4] > 1:
         return {"comparable": False, "reason": "non_unique_run_summary",
                 "details": {"baseline_count": base[4], "candidate_count": cand[4]}}
+    if base[1] is None or cand[1] is None:
+        return {"comparable": False, "reason": "missing_run_context",
+                "details": {"baseline": base[3] == 0, "candidate": cand[3] == 0}}
+    if base[2] is None or cand[2] is None:
+        return {"comparable": False, "reason": "missing_run_summary",
+                "details": {"baseline": base[4] == 0, "candidate": cand[4] == 0}}
     context_diff = {k: {"baseline": base[1].get(k), "candidate": cand[1].get(k)}
                     for k in sorted(set(base[1]) | set(cand[1]))
                     if base[1].get(k) != cand[1].get(k)}
