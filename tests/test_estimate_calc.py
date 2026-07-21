@@ -597,9 +597,9 @@ class TestPipeline(HistoryBase):
             "tasks": [
                 {"task": "Add endpoint", "category": "backend-api",
                  "tags": ["auth"], "o": 4, "m": 8, "p": 16,
-                 "default_factor": 0.45},
+                 "default_factor": 0.55},
                 {"task": "Write guide", "category": "docs", "tags": [],
-                 "o": 1, "m": 2, "p": 3, "default_factor": 0.35},
+                 "o": 1, "m": 2, "p": 3, "default_factor": 0.50},
             ],
             "trials": 500,
             "seed": 42,
@@ -676,7 +676,7 @@ class TestPipeline(HistoryBase):
         )
         self.assertEqual(out["tasks"][0]["o"], 4)  # uncorrected
         self.assertEqual(
-            out["tasks"][0]["ai_factor"], {"factor": 0.45, "source": "default"}
+            out["tasks"][0]["ai_factor"], {"factor": 0.55, "source": "default"}
         )
         self.assertLess(out["ai_assisted"]["p80"], out["traditional"]["p80"])
         # 履歴だけが永続化される出力である。
@@ -706,7 +706,7 @@ class TestPipeline(HistoryBase):
             "factor": 0.5, "source": "learned", "low_sample": True,
         })
         self.assertEqual(
-            out["tasks"][1]["ai_factor"], {"factor": 0.35, "source": "default"}
+            out["tasks"][1]["ai_factor"], {"factor": 0.50, "source": "default"}
         )
 
     def test_missing_default_factor_fails_before_any_write(self):

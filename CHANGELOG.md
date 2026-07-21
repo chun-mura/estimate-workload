@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-07-21
+
+### 変更
+
+- AI支援の既定係数を、公開エビデンス（Peng et al. 2023、McKinsey 2023、Cui et al. 2024、METR 2025）に合わせて引き上げた（docs/test 0.50、backend-api 0.55、frontend-ui 0.60、db-migration 0.75、infra 0.80）。相対順位は維持し、cold-start の楽観バイアスを抑える。
+
 ## [0.8.0] - 2026-07-20
 
 ### 変更
