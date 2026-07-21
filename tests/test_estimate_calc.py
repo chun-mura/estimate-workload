@@ -834,6 +834,33 @@ class TestPipeline(HistoryBase):
         self.assertIs(ec.PAYLOAD_COMMANDS["pipeline"], ec.cmd_pipeline)
 
 
+class TestCompareRuns(HistoryBase):
+    def _payload(self, slug):
+        return {"history_path": self.path, "slug": slug,
+                "analysis": {"mode": "quality", "agents": ["spec-analyzer", "code-analyzer"]},
+                "tasks": [{"task": "Task", "category": "backend-api", "tags": [],
+                            "o": 4, "m": 8, "p": 12, "default_factor": 0.5}],
+                "run_context": TestPipeline.VALID_CONTEXT, "trials": 20, "seed": 1}
+    def test_compare_runs_reports_context_and_totals(self):
+        base = ec.cmd_pipeline(self._payload("base"))
+        cand = ec.cmd_pipeline(self._payload("candidate"))
+        out = ec.cmd_compare_runs({"history_path": self.path,
+                                   "baseline_run_id": base["run_id"],
+                                   "candidate_run_id": cand["run_id"]})
+        self.assertTrue(out["comparable"])
+        self.assertEqual(out["context_diff"], {})
+        self.assertIn("p50", out["totals"]["baseline"])
+
+    def test_compare_runs_marks_legacy_not_comparable(self):
+        legacy = self.append()
+        cand = ec.cmd_pipeline(self._payload("candidate"))
+        out = ec.cmd_compare_runs({"history_path": self.path,
+                                   "baseline_run_id": legacy["run_id"],
+                                   "candidate_run_id": cand["run_id"]})
+        self.assertFalse(out["comparable"])
+        self.assertEqual(out["reason"], "missing_run_context")
+
+
 class TestDistribute(unittest.TestCase):
     def test_proportional_split_sums_to_total(self):
         out = ec.cmd_distribute({

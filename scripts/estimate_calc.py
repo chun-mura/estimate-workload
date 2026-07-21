@@ -469,6 +469,60 @@ def cmd_update_actual(history_path, task_id, actual, ai_assisted, lock_timeout=5
         os.remove(lock)
 
 
+def cmd_compare_runs(payload):
+    """Compare two persisted estimate runs without judging task semantics."""
+    path = _required_string(payload, "history_path", "compare-runs")
+    baseline_id = _required_string(payload, "baseline_run_id", "compare-runs")
+    candidate_id = _required_string(payload, "candidate_run_id", "compare-runs")
+    records, _warnings = read_history(path)
+
+    def collect(run_id):
+        rows = [r for r in records if r.get("run_id") == run_id]
+        if not rows:
+            return None
+        contexts = {json.dumps(r.get("run_context"), sort_keys=True)
+                    for r in rows if r.get("run_context") is not None}
+        summaries = {json.dumps(r.get("run_summary"), sort_keys=True)
+                     for r in rows if r.get("run_summary") is not None}
+        context = json.loads(next(iter(contexts))) if len(contexts) == 1 else None
+        summary = json.loads(next(iter(summaries))) if len(summaries) == 1 else None
+        return rows, context, summary
+
+    base, cand = collect(baseline_id), collect(candidate_id)
+    if base is None or cand is None:
+        return {"comparable": False, "reason": "run_not_found"}
+    if base[1] is None or cand[1] is None or base[2] is None or cand[2] is None:
+        return {"comparable": False, "reason": "missing_run_context"}
+    context_diff = {k: {"baseline": base[1].get(k), "candidate": cand[1].get(k)}
+                    for k in sorted(set(base[1]) | set(cand[1]))
+                    if base[1].get(k) != cand[1].get(k)}
+
+    def stats(rows):
+        ms = [r["m"] for r in rows]
+        cats = {}
+        for r in rows:
+            cats[r["category"]] = cats.get(r["category"], 0) + 1
+        return {
+            "task_count": len(rows),
+            "category_counts": cats,
+            "m_summary": {"min": min(ms), "median": statistics.median(ms), "max": max(ms)},
+            "granularity_warning_count": sum(1 for r in rows if r["m"] < 4 or r["m"] > 24),
+        }
+
+    bs, cs = stats(base[0]), stats(cand[0])
+    return {
+        "comparable": not context_diff,
+        "reason": None if not context_diff else "context_mismatch",
+        "context_diff": context_diff,
+        "task_count": {"baseline": bs["task_count"], "candidate": cs["task_count"]},
+        "category_counts": {"baseline": bs["category_counts"], "candidate": cs["category_counts"]},
+        "m_summary": {"baseline": bs["m_summary"], "candidate": cs["m_summary"]},
+        "granularity_warning_count": {"baseline": bs["granularity_warning_count"],
+                                       "candidate": cs["granularity_warning_count"]},
+        "totals": {"baseline": base[2].get("traditional"), "candidate": cand[2].get("traditional")},
+    }
+
+
 def cmd_reference_class(payload):
     path = payload.get("history_path")
     if not isinstance(path, str) or not path:
@@ -791,6 +845,7 @@ PAYLOAD_COMMANDS = {
     "calibration": cmd_calibration,
     "distribute": cmd_distribute,
     "pipeline": cmd_pipeline,
+    "compare-runs": cmd_compare_runs,
 }
 
 
