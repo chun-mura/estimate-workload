@@ -1,6 +1,6 @@
 ---
 description: Produce a scientifically-grounded effort estimate (WBS + 3-point + Monte Carlo + reference-class calibration) from any mix of design docs, issues, or free-text requirements, plus codebase analysis. Use when the user asks to estimate effort, workload, or delivery time for described work.
-argument-hint: [--mode quality|economy] [--ai-view|--no-ai-view] [--no-qa] [--id <design-id>] [file paths and/or a description]
+argument-hint: [--mode quality|economy] [--ai-view|--no-ai-view] [--no-qa] [--id <design-id>] [--compare-to <run-id>] [file paths and/or a description]
 ---
 
 # /estimate:new
@@ -24,10 +24,10 @@ Examples:
 - `/estimate:new docs/spec.md` keeps the existing mode-and-AI-view question.
 
 Options: before sources, accept `--mode quality|economy`, `--ai-view`,
-`--no-ai-view`, `--no-qa`, and `--id <design-id>` in any order. Remove all
+`--no-ai-view`, `--no-qa`, `--id <design-id>`, and `--compare-to <run-id>` in any order. Remove all
 recognized options before treating the remainder as sources. Each option may
 appear at most once; `--ai-view` and `--no-ai-view` are mutually exclusive.
-`--mode quality --ai-view --no-qa --id a-ar-001` is valid. `design-id` must match
+`--mode quality --ai-view --no-qa --id a-ar-001 --compare-to run-20260721-abc` is valid. `design-id` must match
 `<letters>-<letters>-<three digits or 統合>`, such as `a-ar-001` or
 `a-da-統合`; normalize it to lowercase. A missing or invalid `--mode` or
 `--id` value, any duplicate (including `--no-qa`) or conflicting option, or an unknown leading
@@ -111,7 +111,7 @@ default.
    Never re-serialize the task list into separate
    per-step calls. Payload:
    - `history_path: ".estimate/history.jsonl"`, `slug` (kebab-case from the
-     work's name), and `tasks` — each with `task`, `category`, `tags`, raw
+     work's name), `run_context`, and `tasks` — each with `task`, `category`, `tags`, raw
      `o`/`m`/`p`, and `default_factor` (the category's default from
      `references/ai-assistance-factors.md`) when `ai_view` is `true`.
    - `ai_view: false` when `ai_view` is `false` (then
@@ -122,6 +122,10 @@ default.
      `{ "mode": "economy", "agents": ["spec-analyzer"] }`. Do not invent
      agent names. This is required even when a quality-mode analyzer failed and
      the result is partial.
+   - `run_context` is always present and validated. It contains `comparison_key`,
+     `scope`, `exclusions`, `dependencies`, `assumptions`, `sources`,
+     `qa_included`, and `unit: hours`. O/M/P の単位は時間とし、
+     `granularity_warnings` records tasks requiring split/merge rationale.
    - `correlation` and `hours_per_day` from `.estimate/config.json` if
      present; otherwise omit each so CALC owns the defaults (`0.3`, `8`).
    The result contains the `run_id` (task ids are `<run_id>-01`, `-02`, … in
@@ -133,6 +137,11 @@ default.
    `hours_per_day`, `traditional_seed`, `ai_assisted_seed`) that the report
    quotes as the run's reproduction conditions.
    Any failure: stop and report stderr.
+   When `--compare-to <run-id>` is specified, call `compare-runs` once after
+   `pipeline`. If absolute P50 difference is 30% or more, or `context_diff`
+   is non-empty, reconcile scope, assumptions, and WBS correspondence before
+   writing the report. If unresolved, record optimistic, standard, and
+   pessimistic adopted values and reasons (楽観・標準・悲観) under `## 前提条件` and `## リスク`.
 8. **Report file.** Read
    `${CLAUDE_PLUGIN_ROOT}/skills/new/references/report-template.md` and follow
    it exactly — its section order, heading text, and table columns are fixed, so

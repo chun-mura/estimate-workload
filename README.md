@@ -45,6 +45,7 @@ claude --plugin-dir .
 /estimate:new --mode quality --ai-view docs/spec.md docs/tasks.md
 /estimate:new --mode economy --no-ai-view docs/spec.md docs/tasks.md
 /estimate:new --mode quality --no-qa docs/spec.md docs/tasks.md
+/estimate:new --mode quality --compare-to 20260721-a-ar-001 docs/spec.md
 ```
 
 1回の実行は、関連するタスク群1件分です。共有分析を繰り返さないため、関連タスクは1回にまとめてください。独立した複数コマンドは、別タスク群として扱われます。
@@ -57,6 +58,7 @@ claude --plugin-dir .
 4. `docs/estimates/` 配下へレポートを保存し、`run_id` を表示する
 
 レポートはすべて `skills/new/references/report-template.md` の固定構造に従うため、実行ごとに比較できます。
+再見積もり時は `--compare-to <run-id>` を指定すると、同じ `comparison_key` の履歴と比較します。P50差が30%以上、または前提差がある場合は、スコープ・前提・WBS対応を確認し、未解消なら楽観・標準・悲観の値をレポートに併記します。旧形式(v2)履歴は比較メタデータがないため比較不能として扱います。
 
 #### QA範囲（既定で含む）
 

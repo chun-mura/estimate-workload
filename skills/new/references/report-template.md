@@ -57,6 +57,8 @@ A run-to-run difference in structure is a defect, not a style choice.
 - タスク相関 rho = <correlation>（common-cause factor によるモンテカルロ）
 - 解析モード: <pipeline.analysis.mode>
 - O/M/P は <corrected: 参照クラス補正後 / uncorrected: 補正なしの生値> の値
+- O/M/P の単位は時間。粒度警告: <granularity_warnings または 該当なし>
+- 比較結果: <compare-runs の差分、または 比較なし>
 - 分布 <distribution> / 試行 <trials> 回 / seed <traditional_seed>（再現条件は
   `pipeline` の `simulation` に記録）
 
@@ -69,6 +71,7 @@ A run-to-run difference in structure is a defect, not a style choice.
 ## 前提条件
 
 - <未回答の論点を前提として1件1行。各行が P を広げた理由になっていること>
+- 比較差分が未解消の場合: 楽観 <値・理由> / 標準 <値・理由> / 悲観 <値・理由>
 
 ## リスク
 
