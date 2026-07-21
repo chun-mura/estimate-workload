@@ -850,6 +850,8 @@ class TestCompareRuns(HistoryBase):
         self.assertTrue(out["comparable"])
         self.assertEqual(out["context_diff"], {})
         self.assertIn("p50", out["totals"]["baseline"])
+        self.assertIn("task_sums", out["totals"]["baseline"])
+        self.assertEqual(out["totals"]["baseline"]["task_sums"]["m"], 8)
 
     def test_compare_runs_marks_legacy_not_comparable(self):
         legacy = self.append()

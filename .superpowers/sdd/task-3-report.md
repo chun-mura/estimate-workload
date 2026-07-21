@@ -8,3 +8,5 @@ Tests: `python3 -m pytest estimate-workload/tests/test_estimate_calc.py -k compa
 Commit: `feat: compare estimate runs`
 
 Concern: comparable is currently false when contexts differ; callers can still inspect the complete diff and statistics returned.
+
+Review fixes: totals now include persisted task sums for `o`, `m`, `p`, and `pert`; missing and non-unique context/summary are reported with distinct reasons and details.

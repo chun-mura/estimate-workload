@@ -486,13 +486,23 @@ def cmd_compare_runs(payload):
                      for r in rows if r.get("run_summary") is not None}
         context = json.loads(next(iter(contexts))) if len(contexts) == 1 else None
         summary = json.loads(next(iter(summaries))) if len(summaries) == 1 else None
-        return rows, context, summary
+        return rows, context, summary, len(contexts), len(summaries)
 
     base, cand = collect(baseline_id), collect(candidate_id)
     if base is None or cand is None:
         return {"comparable": False, "reason": "run_not_found"}
-    if base[1] is None or cand[1] is None or base[2] is None or cand[2] is None:
-        return {"comparable": False, "reason": "missing_run_context"}
+    if base[1] is None or cand[1] is None:
+        return {"comparable": False, "reason": "missing_run_context",
+                "details": {"baseline": base[3] == 0, "candidate": cand[3] == 0}}
+    if base[3] > 1 or cand[3] > 1:
+        return {"comparable": False, "reason": "non_unique_run_context",
+                "details": {"baseline_count": base[3], "candidate_count": cand[3]}}
+    if base[2] is None or cand[2] is None:
+        return {"comparable": False, "reason": "missing_run_summary",
+                "details": {"baseline": base[4] == 0, "candidate": cand[4] == 0}}
+    if base[4] > 1 or cand[4] > 1:
+        return {"comparable": False, "reason": "non_unique_run_summary",
+                "details": {"baseline_count": base[4], "candidate_count": cand[4]}}
     context_diff = {k: {"baseline": base[1].get(k), "candidate": cand[1].get(k)}
                     for k in sorted(set(base[1]) | set(cand[1]))
                     if base[1].get(k) != cand[1].get(k)}
@@ -519,7 +529,14 @@ def cmd_compare_runs(payload):
         "m_summary": {"baseline": bs["m_summary"], "candidate": cs["m_summary"]},
         "granularity_warning_count": {"baseline": bs["granularity_warning_count"],
                                        "candidate": cs["granularity_warning_count"]},
-        "totals": {"baseline": base[2].get("traditional"), "candidate": cand[2].get("traditional")},
+        "totals": {
+            "baseline": {**(base[2].get("traditional") or {}),
+                          "task_sums": {k: round(sum(r[k] for r in base[0]), 2)
+                                         for k in ("o", "m", "p", "pert")}},
+            "candidate": {**(cand[2].get("traditional") or {}),
+                           "task_sums": {k: round(sum(r[k] for r in cand[0]), 2)
+                                          for k in ("o", "m", "p", "pert")}},
+        },
     }
 
 
