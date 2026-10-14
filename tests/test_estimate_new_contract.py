@@ -89,5 +89,13 @@ class TestAiFactorContract(unittest.TestCase):
 
     def test_qa_execution_is_manual_verification(self):
         text = SKILL.read_text(encoding="utf-8")
-        self.assertIn("`manual-verification`", text)
         self.assertIn("Test planning and test-case preparation as `docs`", text)
+        self.assertIn(
+            "Functional verification in an integrated environment; Integration, E2E, "
+            "and regression testing; and Defect verification and retesting as "
+            "`manual-verification`",
+            text,
+        )
+        self.assertIn(
+            "(writing new automated E2E test code is a separate `test-only` task)", text
+        )
