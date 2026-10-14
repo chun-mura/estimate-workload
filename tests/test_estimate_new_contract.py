@@ -1,5 +1,7 @@
-import pathlib
 import json
+import pathlib
+import re
+import sys
 import unittest
 
 
@@ -47,3 +49,45 @@ class TestEstimateNewQaContract(unittest.TestCase):
             "Unit tests and in-development checks remain part of implementation tasks",
             text,
         )
+
+
+sys.path.insert(0, str(ROOT / "scripts"))
+import estimate_calc as ec  # noqa: E402
+
+REFS = SKILL.parent / "references"
+
+
+def _table_rows(path):
+    rows = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"\| `([a-z-]+)` \| ([^|]+) \|", line)
+        if m:
+            rows[m.group(1)] = m.group(2).strip()
+    return rows
+
+
+class TestAiFactorContract(unittest.TestCase):
+    def test_every_category_has_a_default_factor_and_taxonomy_row(self):
+        factors = _table_rows(REFS / "ai-assistance-factors.md")
+        taxonomy = _table_rows(REFS / "category-taxonomy.md")
+        self.assertEqual(set(factors), ec.CATEGORIES)
+        self.assertEqual(set(taxonomy), ec.CATEGORIES)
+
+    def test_default_factors_follow_field_evidence(self):
+        factors = {k: float(v) for k, v in
+                   _table_rows(REFS / "ai-assistance-factors.md").items()}
+        self.assertEqual(factors, {
+            "docs": 0.50, "test-only": 0.70, "backend-api": 0.80,
+            "frontend-ui": 0.80, "db-migration": 0.85, "infra": 0.90,
+            "manual-verification": 1.00,
+        })
+
+    def test_factor_reference_cites_field_studies(self):
+        text = (REFS / "ai-assistance-factors.md").read_text(encoding="utf-8")
+        for required in ("Paradis", "Cui", "METR 2026", "Peng"):
+            self.assertIn(required, text)
+
+    def test_qa_execution_is_manual_verification(self):
+        text = SKILL.read_text(encoding="utf-8")
+        self.assertIn("`manual-verification`", text)
+        self.assertIn("Test planning and test-case preparation as `docs`", text)

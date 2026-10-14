@@ -29,7 +29,8 @@ LEGACY_SCHEMA_VERSION = 2
 # cmd_simulate が標本を取る三角分布とは一致しない。基準を混在させると
 # キャリブレーション比率が壊れるため、v1 レコードは警告付きで除外する。
 KNOWN_SCHEMA_VERSIONS = {2, 3}
-CATEGORIES = {"backend-api", "frontend-ui", "db-migration", "infra", "test-only", "docs"}
+CATEGORIES = {"backend-api", "frontend-ui", "db-migration", "infra", "test-only", "docs",
+              "manual-verification"}
 DEFAULT_TRIALS = 10_000
 DEFAULT_CORRELATION = 0.3
 ANALYSIS_MODES = {"quality", "economy"}
