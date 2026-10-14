@@ -14,13 +14,15 @@ CHANGELOG = ROOT / "CHANGELOG.md"
 class TestEstimateNewQaContract(unittest.TestCase):
     def test_release_metadata_contract(self):
         plugin = json.loads(PLUGIN.read_text(encoding="utf-8"))
-        self.assertEqual(plugin["version"], "0.10.0")
+        self.assertEqual(plugin["version"], "0.11.0")
         changelog = CHANGELOG.read_text(encoding="utf-8")
-        for required in ("0.10.0", "粒度", "比較", "v3", "run_context"):
+        for required in ("0.10.0", "0.11.0", "粒度", "比較", "v3", "run_context"):
             self.assertIn(required, changelog)
         unreleased = changelog.split("## [Unreleased]", 1)[1].split("\n## ", 1)[0]
-        for required in ("粒度", "比較", "run_context", "30%"):
-            self.assertIn(required, unreleased)
+        self.assertEqual(unreleased.strip(), "")
+        release = changelog.split("## [0.11.0]", 1)[1].split("\n## ", 1)[0]
+        for required in ("粒度", "比較", "run_context", "30%", "manual-verification"):
+            self.assertIn(required, release)
 
     def test_skill_requires_hour_units_context_and_reconciliation_gate(self):
         text = SKILL.read_text(encoding="utf-8")
