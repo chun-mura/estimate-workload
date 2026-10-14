@@ -1,5 +1,7 @@
-import pathlib
 import json
+import pathlib
+import re
+import sys
 import unittest
 
 
@@ -12,13 +14,15 @@ CHANGELOG = ROOT / "CHANGELOG.md"
 class TestEstimateNewQaContract(unittest.TestCase):
     def test_release_metadata_contract(self):
         plugin = json.loads(PLUGIN.read_text(encoding="utf-8"))
-        self.assertEqual(plugin["version"], "0.10.0")
+        self.assertEqual(plugin["version"], "0.11.0")
         changelog = CHANGELOG.read_text(encoding="utf-8")
-        for required in ("0.10.0", "粒度", "比較", "v3", "run_context"):
+        for required in ("0.10.0", "0.11.0", "粒度", "比較", "v3", "run_context"):
             self.assertIn(required, changelog)
         unreleased = changelog.split("## [Unreleased]", 1)[1].split("\n## ", 1)[0]
-        for required in ("粒度", "比較", "run_context", "30%"):
-            self.assertIn(required, unreleased)
+        self.assertEqual(unreleased.strip(), "")
+        release = changelog.split("## [0.11.0]", 1)[1].split("\n## ", 1)[0]
+        for required in ("粒度", "比較", "run_context", "30%", "manual-verification"):
+            self.assertIn(required, release)
 
     def test_skill_requires_hour_units_context_and_reconciliation_gate(self):
         text = SKILL.read_text(encoding="utf-8")
@@ -46,4 +50,54 @@ class TestEstimateNewQaContract(unittest.TestCase):
         self.assertIn(
             "Unit tests and in-development checks remain part of implementation tasks",
             text,
+        )
+
+
+sys.path.insert(0, str(ROOT / "scripts"))
+import estimate_calc as ec  # noqa: E402
+
+REFS = SKILL.parent / "references"
+
+
+def _table_rows(path):
+    rows = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"\| `([a-z-]+)` \| ([^|]+) \|", line)
+        if m:
+            rows[m.group(1)] = m.group(2).strip()
+    return rows
+
+
+class TestAiFactorContract(unittest.TestCase):
+    def test_every_category_has_a_default_factor_and_taxonomy_row(self):
+        factors = _table_rows(REFS / "ai-assistance-factors.md")
+        taxonomy = _table_rows(REFS / "category-taxonomy.md")
+        self.assertEqual(set(factors), ec.CATEGORIES)
+        self.assertEqual(set(taxonomy), ec.CATEGORIES)
+
+    def test_default_factors_follow_field_evidence(self):
+        factors = {k: float(v) for k, v in
+                   _table_rows(REFS / "ai-assistance-factors.md").items()}
+        self.assertEqual(factors, {
+            "docs": 0.50, "test-only": 0.70, "backend-api": 0.80,
+            "frontend-ui": 0.80, "db-migration": 0.85, "infra": 0.90,
+            "manual-verification": 1.00,
+        })
+
+    def test_factor_reference_cites_field_studies(self):
+        text = (REFS / "ai-assistance-factors.md").read_text(encoding="utf-8")
+        for required in ("Paradis", "Cui", "METR 2026", "Peng"):
+            self.assertIn(required, text)
+
+    def test_qa_execution_is_manual_verification(self):
+        text = SKILL.read_text(encoding="utf-8")
+        self.assertIn("Test planning and test-case preparation as `docs`", text)
+        self.assertIn(
+            "Functional verification in an integrated environment; Integration, E2E, "
+            "and regression testing; and Defect verification and retesting as "
+            "`manual-verification`",
+            text,
+        )
+        self.assertIn(
+            "(writing new automated E2E test code is a separate `test-only` task)", text
         )

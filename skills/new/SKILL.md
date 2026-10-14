@@ -94,9 +94,10 @@ default.
    assumptions from step 4. Produce leaf tasks (0.5–3 person-days) with
    concise Japanese verb-first task names, category (fixed taxonomy), and
    tags. Technical identifiers such as API, framework, file, and schema names
-   may remain in English. When `qa_included` is true, add applicable
-   `test-only` leaf tasks for Test planning and test-case preparation;
-   Functional verification in an integrated environment; Integration, E2E, and regression testing; and Defect verification and retesting. Split or
+   may remain in English. When `qa_included` is true, add applicable QA leaf
+   tasks: Test planning and test-case preparation as `docs`;
+   Functional verification in an integrated environment; Integration, E2E, and regression testing; and Defect verification and retesting as `manual-verification`
+   (writing new automated E2E test code is a separate `test-only` task). Split or
    combine these QA tasks as needed to preserve the 0.5–3 person-day rule.
    Unit tests and in-development checks remain part of implementation tasks
    and must not be counted again as QA. When `qa_included` is false, do not

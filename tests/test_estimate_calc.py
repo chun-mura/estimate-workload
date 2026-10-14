@@ -746,6 +746,24 @@ class TestPipeline(HistoryBase):
         recs = [json.loads(l) for l in self.raw_lines()]
         self.assertEqual([r["run_id"] for r in recs], [out["run_id"]] * 2)
 
+    def test_manual_verification_category_is_accepted(self):
+        tasks = [{"task": "Verify on staging", "category": "manual-verification",
+                  "tags": ["qa"], "o": 2, "m": 4, "p": 8, "default_factor": 1.0}]
+        out = ec.cmd_pipeline(self.payload(tasks=tasks))
+        self.assertEqual(out["tasks"][0]["category"], "manual-verification")
+        self.assertEqual(
+            out["tasks"][0]["ai_factor"], {"factor": 1.0, "source": "default"}
+        )
+
+    def test_manual_verification_records_round_trip_through_history(self):
+        tasks = [{"task": "Verify on staging", "category": "manual-verification",
+                  "tags": ["qa"], "o": 2, "m": 4, "p": 8, "default_factor": 1.0}]
+        out = ec.cmd_pipeline(self.payload(tasks=tasks))
+        records, warnings = ec.read_history(self.path)
+        self.assertEqual(warnings, [])
+        self.assertEqual([r["id"] for r in records], [out["run_id"] + "-01"])
+        self.assertEqual(records[0]["category"], "manual-verification")
+
     def test_applies_reference_class_correction(self):
         # actual/pert = 2.0 の完了済み backend-api レコードが5件。
         self.write_done([

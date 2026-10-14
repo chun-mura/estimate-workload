@@ -114,9 +114,10 @@ and keep prompt/orchestration logic out of it.
 
 ## v1 constraints
 
-- **Fixed category taxonomy** — exactly six categories
+- **Fixed category taxonomy** — exactly seven categories
   (`skills/new/references/category-taxonomy.md`):
-  `backend-api`, `frontend-ui`, `db-migration`, `infra`, `test-only`, `docs`.
+  `backend-api`, `frontend-ui`, `db-migration`, `infra`, `test-only`, `docs`,
+  `manual-verification`.
   `estimate_calc.py`'s `CATEGORIES` set rejects anything else. There is no
   mechanism yet for project-specific categories — a task spanning two
   categories must be split into two tasks, not force-fit into one.
