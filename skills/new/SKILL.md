@@ -136,7 +136,9 @@ default.
    input order), per-task corrected `o`/`m`/`p`/`pert` with each correction's
    `basis`/`low_sample` (or its skip reason), per-task `ai_factor` with its
    `source` (learned factors win over `default_factor` inside CALC — never
-   multiply hours yourself), both totals, the resolved `correlation`, and a
+   multiply hours yourself), both totals, `ai_sensitivity` (optimistic /
+   central / conservative AI-assisted totals while any task uses a default
+   factor; `null` otherwise), the resolved `correlation`, and a
    `simulation` block (`distribution`, `trials`, `correlation`,
    `hours_per_day`, `traditional_seed`, `ai_assisted_seed`) that the report
    quotes as the run's reproduction conditions.
@@ -159,7 +161,7 @@ default.
    name, use only `YYYY-MM-DD-<report_id>.md`. If writing fails, print the
    full report in chat instead — history is already saved.
    Before writing, confirm every number and id in the report came from the
-   `pipeline` result of step 7: totals from `traditional`/`ai_assisted`
+   `pipeline` result of step 7: totals from `traditional`/`ai_assisted`/`ai_sensitivity`
    (including `p50_days`/`p80_days` — never divide hours yourself), per-task
    `pert`, and the full task ids used verbatim in the 履歴ID column.
    Never compute, round, or invent any of them. The report's reproduction

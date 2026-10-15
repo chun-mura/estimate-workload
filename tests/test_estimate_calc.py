@@ -790,6 +790,53 @@ class TestPipeline(HistoryBase):
             out["tasks"][1]["ai_factor"], {"factor": 0.50, "source": "default"}
         )
 
+    def test_ai_sensitivity_brackets_central_with_shared_seed(self):
+        tasks = self.payload()["tasks"]
+        tasks[0]["default_factor"] = 0.80   # current backend-api default
+        tasks[1]["default_factor"] = 0.60   # current docs default
+        out = ec.cmd_pipeline(self.payload(tasks=tasks))
+        sens = out["ai_sensitivity"]
+        self.assertEqual(sens["central"], out["ai_assisted"])
+        for q in ("p50", "p80"):
+            self.assertLessEqual(sens["optimistic"][q], sens["central"][q])
+            self.assertLessEqual(sens["central"][q], sens["conservative"][q])
+        # Same seed and default factors reproduce the optimistic total exactly.
+        tasks = [{"name": t["task"], "o": t["o"], "m": t["m"], "p": t["p"],
+                  "factor": ec.AI_SENSITIVITY_FACTORS["optimistic"][t["category"]]}
+                 for t in out["tasks"]]
+        expected = ec.cmd_simulate({"tasks": tasks, "trials": 500,
+                                    "seed": out["simulation"]["ai_assisted_seed"]})
+        self.assertEqual(sens["optimistic"], expected["total"])
+
+    def test_ai_sensitivity_is_null_without_ai_view(self):
+        out = ec.cmd_pipeline(self.payload(ai_view=False))
+        self.assertIsNone(out["ai_sensitivity"])
+
+    def test_ai_sensitivity_is_null_when_every_factor_is_learned(self):
+        recs = [_done_record(i, actual=5.0, ai=True) for i in range(3)]
+        recs += [_done_record(i + 3, actual=10.0, ai=False) for i in range(3)]
+        self.write_done(recs)
+        out = ec.cmd_pipeline(self.payload(tasks=self.payload()["tasks"][:1]))
+        self.assertEqual(out["tasks"][0]["ai_factor"]["source"], "learned")
+        self.assertIsNone(out["ai_sensitivity"])
+
+    def test_ai_sensitivity_keeps_learned_factors_fixed(self):
+        recs = [_done_record(i, actual=5.0, ai=True) for i in range(3)]
+        recs += [_done_record(i + 3, actual=10.0, ai=False) for i in range(3)]
+        self.write_done(recs)
+        out = ec.cmd_pipeline(self.payload())
+        tasks = [{"name": t["task"], "o": t["o"], "m": t["m"], "p": t["p"],
+                  "factor": 0.5 if t["category"] == "backend-api" else
+                  ec.AI_SENSITIVITY_FACTORS["conservative"][t["category"]]}
+                 for t in out["tasks"]]
+        expected = ec.cmd_simulate({"tasks": tasks, "trials": 500,
+                                    "seed": out["simulation"]["ai_assisted_seed"]})
+        self.assertEqual(out["ai_sensitivity"]["conservative"], expected["total"])
+
+    def test_sensitivity_factors_cover_every_category(self):
+        for scenario in ("optimistic", "conservative"):
+            self.assertEqual(set(ec.AI_SENSITIVITY_FACTORS[scenario]), ec.CATEGORIES)
+
     def test_missing_default_factor_fails_before_any_write(self):
         payload = self.payload()
         del payload["tasks"][1]["default_factor"]
