@@ -43,6 +43,9 @@ AI_SENSITIVITY_FACTORS = {
         "db-migration": 1.00, "infra": 1.05, "manual-verification": 1.10,
     },
 }
+# 実績の出どころ。tracked は時間の記録、recalled は記憶による申告。
+# 項目を持たない旧レコードは recalled と同じく untracked として数える。
+ACTUAL_BASES = ("tracked", "recalled")
 DEFAULT_TRIALS = 10_000
 DEFAULT_CORRELATION = 0.3
 ANALYSIS_MODES = {"quality", "economy"}
@@ -254,6 +257,8 @@ def schema_error(rec):
     ai = rec.get("ai_assisted")
     if ai is not None and not isinstance(ai, bool):
         return "'ai_assisted' must be null or a boolean"
+    if rec.get("actual_basis") not in (None, *ACTUAL_BASES):
+        return f"'actual_basis' must be null or one of {list(ACTUAL_BASES)}"
     if rec.get("status") not in ("estimated", "done"):
         return f"unknown status: {rec.get('status')!r}"
     if sv == 3:
@@ -441,9 +446,14 @@ def _acquire_lock(path, timeout):
             time.sleep(0.1)
 
 
-def cmd_update_actual(history_path, task_id, actual, ai_assisted, lock_timeout=5.0):
+def cmd_update_actual(history_path, task_id, actual, ai_assisted, lock_timeout=5.0,
+                      actual_basis=None):
     if not _is_number(actual) or actual <= 0:
         raise CalcError("update-actual: --actual must be a positive number of hours")
+    if actual_basis not in (None, *ACTUAL_BASES):
+        raise CalcError(
+            f"update-actual: --actual-basis must be one of {list(ACTUAL_BASES)}"
+        )
     if not os.path.exists(history_path):
         raise CalcError(f"update-actual: no history file at {history_path}")
     lock = _acquire_lock(history_path, lock_timeout)
@@ -462,6 +472,7 @@ def cmd_update_actual(history_path, task_id, actual, ai_assisted, lock_timeout=5
             if isinstance(rec, dict) and rec.get("id") == task_id:
                 rec["actual"] = actual
                 rec["ai_assisted"] = bool(ai_assisted)
+                rec["actual_basis"] = actual_basis
                 rec["status"] = "done"
                 out_lines.append(json.dumps(rec, ensure_ascii=False) + "\n")
                 updated = rec
@@ -678,6 +689,14 @@ def cmd_calibration(payload):
             }
             if min(len(ai), len(human)) < LOW_SAMPLE_THRESHOLD:
                 ai_factors[cat]["low_sample"] = True
+            # 記憶による実績は体感に引きずられる（METR 2025）。学習には使うが件数を示す。
+            untracked = sum(
+                1 for r in done
+                if r["category"] == cat and isinstance(r.get("ai_assisted"), bool)
+                and r.get("actual_basis") != "tracked"
+            )
+            if untracked:
+                ai_factors[cat]["untracked_count"] = untracked
     result = {
         "count": len(done),
         "ratio_p50": round(p50, 2),
@@ -779,6 +798,8 @@ def cmd_pipeline(payload):
                 info = {"factor": entry["factor"], "source": "learned"}
                 if entry.get("low_sample"):
                     info["low_sample"] = True
+                if entry.get("untracked_count"):
+                    info["untracked_count"] = entry["untracked_count"]
             else:
                 info = {"factor": t["default_factor"], "source": "default"}
             factors.append(info)
@@ -921,11 +942,13 @@ def main(argv=None):
     p.add_argument("--id", required=True)
     p.add_argument("--actual", type=float, required=True)
     p.add_argument("--ai-assisted", choices=["true", "false"], required=True)
+    p.add_argument("--actual-basis", choices=list(ACTUAL_BASES))
     args = parser.parse_args(argv)
     try:
         if args.cmd == "update-actual":
             result = cmd_update_actual(
-                args.history_path, args.id, args.actual, args.ai_assisted == "true"
+                args.history_path, args.id, args.actual, args.ai_assisted == "true",
+                actual_basis=args.actual_basis,
             )
         else:
             result = PAYLOAD_COMMANDS[args.cmd](_load_payload(args.input))

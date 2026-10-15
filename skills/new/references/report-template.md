@@ -74,7 +74,7 @@ AI支援の感度（係数の仮定別）
 
 | カテゴリ | 係数 | 出典 |
 |---|---|---|
-| <category> | <ai_factor> | <learned / default> |
+| <category> | <ai_factor> | <learned / default。learned で untracked_count があれば「learned（記録のない実績 n件を含む・参考値）」> |
 
 ## 前提条件
 

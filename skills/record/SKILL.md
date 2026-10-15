@@ -28,14 +28,22 @@ Input: $ARGUMENTS (optionally a run_id).
    know the run total, call CALC `distribute` with the total and the tasks'
    `id`/`pert` values from the report, show the proposed split, and let the
    user adjust before writing. Also ask whether the work was AI-assisted
-   (one answer per task, or one for the whole run).
+   (one answer per task, or one for the whole run), and where the hours came
+   from: `tracked` (time tracking, PR or ticket timestamps, work logs) or
+   `recalled` (memory or rough sense). Prefer tracked hours — felt speed and
+   measured speed with AI can point in opposite directions (METR 2025).
 3. **Write.** For each task: CALC `update-actual --history-path
    .estimate/history.jsonl --id <task-id> --actual <hours> --ai-assisted
-   true|false`. Report each success or failure as it happens; an unknown id
-   error usually means a typo in the run_id.
+   true|false --actual-basis tracked|recalled`. Report each success or failure
+   as it happens; an unknown id error usually means a typo in the run_id.
 4. **Calibrate.** CALC `calibration` and present, in the conversation
    language: overall bias (under/over-estimating), ratio_p50, per-category
    ratios, and any learned AI-assistance factors now active. Where the output
-   carries `low_sample: true`, say the figure is indicative only. Encourage
+   carries `low_sample: true`, say the figure is indicative only. Where a
+   learned AI factor carries `untracked_count`, say that many of its records
+   are recalled or have no recorded basis (older records), so the factor is
+   indicative only. Encourage
    recording actuals every run — corrections activate at 5 similar completed
-   records per category and firm up around 10.
+   records per category and firm up around 10. For AI factors, also advise
+   deciding AI use by alternating similar tasks, not by task difficulty —
+   using AI only on easy tasks makes the learned factor look better than it is.
