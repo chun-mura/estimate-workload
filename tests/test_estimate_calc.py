@@ -374,6 +374,16 @@ class TestUpdateActual(HistoryBase):
         with self.assertRaises(ec.CalcError):
             ec.cmd_update_actual(self.path, "nope-01", 5, False)
 
+    def test_lock_timeout_stays_the_fifth_positional_argument(self):
+        out = self.append()
+        lock = self.path + ".lock"
+        open(lock, "w").close()
+        try:
+            with self.assertRaisesRegex(ec.CalcError, "lock"):
+                ec.cmd_update_actual(self.path, out["run_id"] + "-01", 5, False, 0.2)
+        finally:
+            os.remove(lock)
+
     def test_preserves_corrupt_lines_verbatim(self):
         out = self.append()
         with open(self.path, "a", encoding="utf-8") as fh:

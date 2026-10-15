@@ -446,8 +446,8 @@ def _acquire_lock(path, timeout):
             time.sleep(0.1)
 
 
-def cmd_update_actual(history_path, task_id, actual, ai_assisted, actual_basis=None,
-                      lock_timeout=5.0):
+def cmd_update_actual(history_path, task_id, actual, ai_assisted, lock_timeout=5.0,
+                      actual_basis=None):
     if not _is_number(actual) or actual <= 0:
         raise CalcError("update-actual: --actual must be a positive number of hours")
     if actual_basis not in (None, *ACTUAL_BASES):
