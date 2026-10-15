@@ -136,7 +136,8 @@ default.
    input order), per-task corrected `o`/`m`/`p`/`pert` with each correction's
    `basis`/`low_sample` (or its skip reason), per-task `ai_factor` with its
    `source` (learned factors win over `default_factor` inside CALC — never
-   multiply hours yourself), both totals, `ai_sensitivity` (optimistic /
+   multiply hours yourself; a learned factor may carry `untracked_count`,
+   the number of its records not backed by tracked hours), both totals, `ai_sensitivity` (optimistic /
    central / conservative AI-assisted totals while any task uses a default
    factor; `null` otherwise), the resolved `correlation`, and a
    `simulation` block (`distribution`, `trials`, `correlation`,

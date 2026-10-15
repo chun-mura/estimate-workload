@@ -333,6 +333,35 @@ class TestUpdateActual(HistoryBase):
         rec = json.loads(self.raw_lines()[0])
         self.assertEqual(rec["actual"], 6.5)
 
+    def test_records_actual_basis(self):
+        out = self.append()
+        task_id = out["run_id"] + "-01"
+        res = ec.cmd_update_actual(self.path, task_id, 6.5, True, actual_basis="tracked")
+        self.assertEqual(res["updated"]["actual_basis"], "tracked")
+        records, warnings = ec.read_history(self.path)
+        self.assertEqual(warnings, [])
+        self.assertEqual(records[0]["actual_basis"], "tracked")
+
+    def test_cli_passes_actual_basis(self):
+        out = self.append()
+        task_id = out["run_id"] + "-01"
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = ec.main(["update-actual", "--history-path", self.path, "--id", task_id,
+                          "--actual", "4", "--ai-assisted", "true",
+                          "--actual-basis", "recalled"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(self.raw_lines()[0])["actual_basis"], "recalled")
+
+    def test_rejects_unknown_actual_basis(self):
+        out = self.append()
+        with self.assertRaisesRegex(ec.CalcError, "actual-basis"):
+            ec.cmd_update_actual(self.path, out["run_id"] + "-01", 5, False,
+                                 actual_basis="guessed")
+
+    def test_schema_rejects_invalid_actual_basis(self):
+        rec = _done_record(1, basis="guessed")
+        self.assertIn("actual_basis", ec.schema_error(rec))
+
     def test_rejects_nonpositive_actual(self):
         out = self.append()
         task_id = out["run_id"] + "-01"
@@ -366,13 +395,16 @@ class TestUpdateActual(HistoryBase):
 
 
 def _done_record(i, category="backend-api", tags=(), pert=10.0, actual=10.0,
-                 ai=False, date="2026-06-01"):
-    return {
+                 ai=False, date="2026-06-01", basis=None):
+    rec = {
         "schema_version": 2, "run_id": f"r{i}", "id": f"r{i}-01", "date": date,
         "task": f"past task {i}", "category": category, "tags": list(tags),
         "o": pert * 0.5, "m": pert, "p": pert * 2, "pert": pert,
         "actual": actual, "ai_assisted": ai, "status": "done",
     }
+    if basis is not None:
+        rec["actual_basis"] = basis
+    return rec
 
 
 class TestReferenceClass(HistoryBase):
@@ -552,6 +584,25 @@ class TestCalibration(TestReferenceClass):
         self.assertNotIn(
             "low_sample", ec.cmd_calibration({"history_path": self.path})
         )
+
+    def test_ai_factor_counts_untracked_actuals(self):
+        recs = [_done_record(i, actual=5.0, ai=True, basis="tracked") for i in range(3)]
+        recs += [_done_record(3, actual=10.0, ai=False, basis="recalled")]
+        recs += [_done_record(i + 4, actual=10.0, ai=False) for i in range(2)]  # legacy
+        self.write_done(recs)
+        entry = ec.cmd_calibration({"history_path": self.path})[
+            "ai_assistance_factors"]["backend-api"]
+        self.assertEqual(entry["factor"], 0.5)
+        self.assertEqual(entry["untracked_count"], 3)
+
+    def test_ai_factor_omits_untracked_count_when_all_tracked(self):
+        recs = [_done_record(i, actual=5.0, ai=True, basis="tracked") for i in range(3)]
+        recs += [_done_record(i + 3, actual=10.0, ai=False, basis="tracked")
+                 for i in range(3)]
+        self.write_done(recs)
+        entry = ec.cmd_calibration({"history_path": self.path})[
+            "ai_assistance_factors"]["backend-api"]
+        self.assertNotIn("untracked_count", entry)
 
     def test_ai_factor_absent_when_sparse(self):
         recs = [_done_record(1, ai=True), _done_record(2, ai=False)]
@@ -783,8 +834,10 @@ class TestPipeline(HistoryBase):
         recs += [_done_record(i + 3, actual=10.0, ai=False) for i in range(3)]
         self.write_done(recs)
         out = ec.cmd_pipeline(self.payload())
+        # Legacy records carry no actual_basis, so all six count as untracked.
         self.assertEqual(out["tasks"][0]["ai_factor"], {
             "factor": 0.5, "source": "learned", "low_sample": True,
+            "untracked_count": 6,
         })
         self.assertEqual(
             out["tasks"][1]["ai_factor"], {"factor": 0.50, "source": "default"}

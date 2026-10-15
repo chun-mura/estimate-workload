@@ -1,6 +1,6 @@
 # 根拠の弱いAI支援係数の扱い（案）
 
-- 状態: 提案（未実装）
+- 状態: C は実装済み（0.13.0。末尾の「C の実装時の決定」を参照）。A・B・D・E は未実装
 - 日付: 2026-10-15
 - 前提: PR #2（AI支援の感度の幅 `ai_sensitivity`、0.12.0）がマージ済みであること
 - 対象: `scripts/estimate_calc.py`（`cmd_calibration`、`cmd_pipeline`）、`skills/record/SKILL.md`、`skills/new/references/ai-assistance-factors.md`、`skills/new/references/report-template.md`、テスト
@@ -92,3 +92,11 @@ factor   = exp( w * ln(learned) + (1 - w) * ln(default) )
 2. C で、旧レコード（`actual_basis` が `null`）を AI係数の学習から外すか、`recalled` として扱い警告付きで使うか。
 3. D の見直し期限を6か月にするか。
 4. A〜E を一度に実装するか、C（記録の改善）を先に出すか。C はほかの提案と独立していて、データの質に直結する。
+
+## C の実装時の決定
+
+- C だけを先に実装した。データの質に直結し、ほかの案と独立しているため。
+- 旧レコード（`actual_basis` を持たない）は学習から外さず、警告をつけて使う（決めること 2）。外すと、学習済みの係数が既定値に戻ってしまうため。
+- `recalled` の実績も学習から外さず、旧レコードと同じく警告をつけて使う。提案時の「AI係数の学習には `tracked` だけを使う」から変えた。旧レコードを使う以上、`recalled` だけを外す理由がないため。
+- 警告は件数で示す。`calibration` の AI係数に `untracked_count`（記録に基づかない実績の件数）を入れ、`pipeline` の `ai_factor` に引き継ぐ。レポートと `/estimate:record` は、これを「参考値」と表示する。
+- `actual_basis` は任意の項目で、既存の項目の意味を変えないので、`SCHEMA_VERSION` は上げない。
