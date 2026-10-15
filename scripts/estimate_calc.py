@@ -31,6 +31,18 @@ LEGACY_SCHEMA_VERSION = 2
 KNOWN_SCHEMA_VERSIONS = {2, 3}
 CATEGORIES = {"backend-api", "frontend-ui", "db-migration", "infra", "test-only", "docs",
               "manual-verification"}
+# AI支援の感度の幅。既定係数（中央）の両側に置く楽観・保守の係数。
+# 根拠は skills/new/references/ai-assistance-factors.md の Sensitivity range。
+AI_SENSITIVITY_FACTORS = {
+    "optimistic": {
+        "backend-api": 0.65, "frontend-ui": 0.70, "docs": 0.50, "test-only": 0.55,
+        "db-migration": 0.75, "infra": 0.80, "manual-verification": 1.00,
+    },
+    "conservative": {
+        "backend-api": 0.95, "frontend-ui": 1.00, "docs": 0.75, "test-only": 0.85,
+        "db-migration": 1.00, "infra": 1.05, "manual-verification": 1.10,
+    },
+}
 DEFAULT_TRIALS = 10_000
 DEFAULT_CORRELATION = 0.3
 ANALYSIS_MODES = {"quality", "economy"}
@@ -755,6 +767,7 @@ def cmd_pipeline(payload):
     ]})
 
     ai_assisted = None
+    ai_sensitivity = None
     factors = []
     if ai_view:
         calibration = cmd_calibration({"history_path": history_path})
@@ -772,6 +785,19 @@ def cmd_pipeline(payload):
             ai_tasks.append({"name": ft["task"], "o": ft["o"], "m": ft["m"],
                              "p": ft["p"], "factor": info["factor"]})
         ai_assisted = cmd_simulate({**sim_base, "tasks": ai_tasks})
+        # 既定係数のタスクが残る間は、係数の仮定による幅を出す。learned の係数は
+        # 固定し、同じ seed を使って係数の違いだけが差になるようにする。
+        if any(info["source"] == "default" for info in factors):
+            ai_sensitivity = {"central": ai_assisted["total"]}
+            for scenario, table in AI_SENSITIVITY_FACTORS.items():
+                scenario_tasks = [
+                    {**at, "factor": table[ft["category"]]}
+                    if info["source"] == "default" else at
+                    for at, ft, info in zip(ai_tasks, final, factors)
+                ]
+                ai_sensitivity[scenario] = cmd_simulate({
+                    **sim_base, "seed": ai_assisted["seed"], "tasks": scenario_tasks,
+                })["total"]
 
     append_payload = {
         "history_path": history_path, "slug": payload["slug"],
@@ -824,6 +850,7 @@ def cmd_pipeline(payload):
         "tasks": out_tasks,
         "traditional": traditional["total"],
         "ai_assisted": ai_assisted["total"] if ai_assisted else None,
+        "ai_sensitivity": ai_sensitivity,
         "analysis": analysis,
         "trials": traditional["trials"],
         "correlation": traditional["correlation"],

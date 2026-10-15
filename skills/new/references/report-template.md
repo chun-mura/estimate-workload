@@ -42,6 +42,14 @@ A run-to-run difference in structure is a defect, not a style choice.
 | AI支援（時間） | <p50>h | <p80>h |
 | AI支援（人日） | <p50_days>人日 | <p80_days>人日 |
 
+AI支援の感度（係数の仮定別）
+
+| 仮定 | P50 | P80 |
+|---|---|---|
+| 楽観 | <p50>h（<p50_days>人日） | <p80>h（<p80_days>人日） |
+| 中央（既定係数） | <p50>h（<p50_days>人日） | <p80>h（<p80_days>人日） |
+| 保守 | <p50>h（<p50_days>人日） | <p80>h（<p80_days>人日） |
+
 <2〜4行で、何を見積もったか・結論・最大の不確実要因>
 
 ## WBS（作業分解）
@@ -100,7 +108,12 @@ A run-to-run difference in structure is a defect, not a style choice.
 
 - When the user declined the AI-assisted view at intake, keep the
   `## AI支援見積もり` heading and replace its body with the single line
-  `ユーザーの依頼により省略。` — and drop the AI rows from `## サマリ`.
+  `ユーザーの依頼により省略。` — and drop the AI rows from `## サマリ`
+  and the AI支援の感度 table.
+- Fill the AI支援の感度 table from `pipeline.ai_sensitivity`
+  (`optimistic` / `central` / `conservative`). When it is `null` with the
+  AI-assisted view on, replace the table with the single line
+  `全カテゴリで実績から学習した係数を使用したため省略。`.
 - Copy `pipeline.analysis.mode` into `## 見積もり手法` as
   `- 解析モード: quality` or `- 解析モード: economy`. For `economy` only, add
   this exact line to `## 前提条件`:

@@ -1,6 +1,6 @@
 # AI支援の既定係数の改定（案）
 
-- 状態: A・B は実装済み（ブランチ feat/evidence-based-ai-factors）。C は未実装
+- 状態: A・B は実装済み（ブランチ feat/evidence-based-ai-factors、0.11.0）。C は実装済み（ブランチ feat/ai-sensitivity-range、0.12.0。末尾の「C の実装時の変更」を参照）
 - 日付: 2026-10-15
 - 対象: `skills/new/references/ai-assistance-factors.md`、`scripts/estimate_calc.py` の `CATEGORIES`、`skills/new/references/category-taxonomy.md`、`skills/new/SKILL.md`（QA活動の分類）、テスト
 
@@ -63,3 +63,22 @@
 1. A の数値（特に `test-only` と `backend-api`）を採用するか。
 2. B の新しいカテゴリの名前と、QA活動の割り当て。
 3. C を v1 の範囲に含めるか。
+
+## C の実装時の変更
+
+追加調査の結果に合わせて、C の係数を案から次のように変えた。
+
+- **楽観**: 現行の係数（0.10.0 の値）ではなく、実務研究の信頼区間のうち短縮が大きい側の端に置く（Cui et al. の上側 ≈0.68、METR 2026 の元参加者の CI 下端 ≈0.62）。カテゴリ別の研究がないところは中央から 0.10〜0.15 下げる。
+- **保守**: 全カテゴリ 0.95 で一律にしない。根拠のあるコード作業（backend-api）は METR 2026 の新規参加者（≈0.96）から 0.95 にする。カテゴリに特化した研究がないところは 1.00 以上にする（METR 2025 ≈1.19、McKinsey の「経験の浅い人は遅くなる」）。
+- **docs の中央を 0.50 から 0.60 に変更**: McKinsey の「約半分」はコードのドキュメントに限った値。このカテゴリには仕様書・テスト計画・テストケースも入るので、文章作成の RCT（Noy & Zhang 2023, Science）の ≈0.60 に合わせた。
+- 値は `estimate_calc.py` の `AI_SENSITIVITY_FACTORS` が持ち、`ai-assistance-factors.md` の Sensitivity range の表と契約テストで一致させる。learned の係数は3本とも固定し、AI支援と同じ seed で計算する。
+
+| カテゴリ | 楽観 | 中央 | 保守 |
+| --- | ---: | ---: | ---: |
+| `docs` | 0.50 | 0.60 | 0.75 |
+| `test-only` | 0.55 | 0.70 | 0.85 |
+| `backend-api` | 0.65 | 0.80 | 0.95 |
+| `frontend-ui` | 0.70 | 0.80 | 1.00 |
+| `db-migration` | 0.75 | 0.85 | 1.00 |
+| `infra` | 0.80 | 0.90 | 1.05 |
+| `manual-verification` | 1.00 | 1.00 | 1.10 |

@@ -23,7 +23,7 @@ Before O/M/P, call `reference-class` with category/tags. `pipeline` applies rati
 
 `pipeline` simulates corrected O/M/P. **P50** is for internal planning; **P80** is commitment-grade. Never present summed M values as the estimate. Report the resolved task correlation (default `rho = 0.3`).
 
-Unless declined by the user, report traditional and AI-assisted views. Pass `hours_per_day` to `pipeline` and use its returned day values. For the AI-assisted view, pass the category `default_factor` from `ai-assistance-factors.md`; `pipeline` uses a learned factor when available and returns its source.
+Unless declined by the user, report traditional and AI-assisted views. Pass `hours_per_day` to `pipeline` and use its returned day values. For the AI-assisted view, pass the category `default_factor` from `ai-assistance-factors.md`; `pipeline` uses a learned factor when available and returns its source. While any task still uses a default factor, `pipeline` also returns `ai_sensitivity` (optimistic / central / conservative totals); report all three, never the central value alone.
 
 ## Report format
 
