@@ -139,9 +139,12 @@ default.
    multiply hours yourself; a learned factor may carry `untracked_count`,
    the number of its records not backed by tracked hours; a default factor
    may carry `correction`, a ratio CALC derived from ≥ 5 completed AI-assisted
-   records and already applied to the AI-assisted view), both totals, `ai_sensitivity` (optimistic /
+   records and already applied to the AI-assisted view, or a `skipped` marker
+   with `count`/`missing_ai_factor` when such records exist but are too few;
+   a traditional correction may carry `excluded_ai_assisted`, the AI-assisted
+   actuals it left out), both totals, `ai_sensitivity` (optimistic /
    central / conservative AI-assisted totals while any task uses a default
-   factor without `correction`; `null` otherwise), the resolved `correlation`, and a
+   factor without an applied `correction`; `null` otherwise), the resolved `correlation`, and a
    `simulation` block (`distribution`, `trials`, `correlation`,
    `hours_per_day`, `traditional_seed`, `ai_assisted_seed`) that the report
    quotes as the run's reproduction conditions.

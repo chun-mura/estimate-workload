@@ -604,7 +604,8 @@ def cmd_reference_class(payload):
     records, warnings = read_history(path)
     # 従来型は AIなしの実績だけで補正する。AIを使った実績を混ぜると、AI支援の
     # 係数を掛けたときに AIの効果を二重に数える。
-    done = [r for r in _done_records(records) if r.get("ai_assisted") is not True]
+    all_done = _done_records(records)
+    done = [r for r in all_done if r.get("ai_assisted") is not True]
     results = []
     for i, t in enumerate(tasks):
         if t.get("category") not in CATEGORIES:
@@ -629,7 +630,7 @@ def cmd_reference_class(payload):
         pool, basis = _pool(same_cat, tags, min_records)
         ratios = [r["actual"] / r["pert"] for r in pool]
         if len(ratios) < min_records:
-            entry["correction"] = {"skipped": "insufficient_data", "count": len(ratios)}
+            correction = {"skipped": "insufficient_data", "count": len(ratios)}
         else:
             r50 = percentile(ratios, 50)
             r80 = percentile(ratios, 80)
@@ -650,7 +651,12 @@ def cmd_reference_class(payload):
                     )
             if _is_number(t.get("p")):
                 correction["corrected_p"] = round(t["p"] * r80, 2)
-            entry["correction"] = correction
+        # 実績がないのか、AIを使った実績を外したのかを区別できるようにする。
+        excluded = sum(1 for r in all_done if r["category"] == t["category"]
+                       and r.get("ai_assisted") is True)
+        if excluded:
+            correction["excluded_ai_assisted"] = excluded
+        entry["correction"] = correction
         results.append(entry)
     return {"tasks": results, "warnings": warnings}
 
@@ -672,21 +678,35 @@ def _pool(same_cat, tags, min_records):
 
 
 def _ai_view_correction(ai_done, category, tags, min_records=5):
-    """AIを使った実績から、AI支援の値に掛ける比率を求める。足りなければ None。"""
+    """AIを使った実績から、AI支援の値に掛ける比率を求める。
+
+    (表示用の補正情報, 丸めない p50, 丸めない p80) を返す。実績が足りなければ
+    比率は None で、補正情報は使えた件数と、係数のない実績の件数を示す。
+    同じカテゴリに AIを使った実績が1件もなければ、補正情報も None。
+    """
     same_cat = [r for r in ai_done if r["category"] == category]
-    pool, basis = _pool(same_cat, set(tags), min_records)
+    if not same_cat:
+        return None, None, None
+    usable = [r for r in same_cat
+              if "ai_factor" in r and r["pert"] * r["ai_factor"] > 0]
+    pool, basis = _pool(usable, set(tags), min_records)
     if len(pool) < min_records:
-        return None
+        correction = {"skipped": "insufficient_data", "count": len(pool)}
+        missing = sum(1 for r in same_cat if "ai_factor" not in r)
+        if missing:
+            correction["missing_ai_factor"] = missing
+        return correction, None, None
     ratios = [r["actual"] / (r["pert"] * r["ai_factor"]) for r in pool]
+    r50, r80 = percentile(ratios, 50), percentile(ratios, 80)
     correction = {
         "count": len(ratios),
         "basis": basis,
-        "ratio_p50": round(percentile(ratios, 50), 2),
-        "ratio_p80": round(percentile(ratios, 80), 2),
+        "ratio_p50": round(r50, 2),
+        "ratio_p80": round(r80, 2),
     }
     if len(ratios) < LOW_SAMPLE_THRESHOLD:
         correction["low_sample"] = True
-    return correction
+    return correction, r50, r80
 
 
 def cmd_calibration(payload):
@@ -825,8 +845,7 @@ def cmd_pipeline(payload):
         calibration = cmd_calibration({"history_path": history_path})
         learned = calibration.get("ai_assistance_factors") or {}
         records, _warnings = read_history(history_path)
-        ai_done = [r for r in _done_records(records)
-                   if r.get("ai_assisted") is True and "ai_factor" in r]
+        ai_done = [r for r in _done_records(records) if r.get("ai_assisted") is True]
         ai_tasks = []
         for t, ft in zip(tasks, final):
             entry = learned.get(ft["category"])
@@ -840,11 +859,12 @@ def cmd_pipeline(payload):
             else:
                 info = {"factor": t["default_factor"], "source": "default"}
                 # 学習済みの係数がないときは、AIを使った実績で AI支援の値を直接補正する。
-                correction = _ai_view_correction(ai_done, ft["category"], ft["tags"])
-                if correction:
-                    info["correction"] = correction
-                    r50, r80 = correction["ratio_p50"], correction["ratio_p80"]
+                correction, r50, r80 = _ai_view_correction(
+                    ai_done, ft["category"], ft["tags"])
+                if r50 is not None:
                     o, m, p = round(o * r50, 2), round(m * r50, 2), round(p * r80, 2)
+                if correction is not None:
+                    info["correction"] = correction
             factors.append(info)
             ai_tasks.append({"name": ft["task"], "o": o, "m": m, "p": p,
                              "factor": info["factor"]})
@@ -852,7 +872,8 @@ def cmd_pipeline(payload):
         # 実績で裏づけのない既定係数のタスクが残る間は、係数の仮定による幅を出す。
         # learned の係数と実績で補正したタスクは固定し、同じ seed を使って係数の
         # 違いだけが差になるようにする。
-        assumed = [info["source"] == "default" and "correction" not in info
+        assumed = [info["source"] == "default"
+                   and "ratio_p50" not in info.get("correction", {})
                    for info in factors]
         if any(assumed):
             ai_sensitivity = {"central": ai_assisted["total"]}

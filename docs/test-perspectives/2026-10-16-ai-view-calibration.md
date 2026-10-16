@@ -44,6 +44,15 @@
 | 既存の v2/v3 履歴がそのまま読める | must | カバー済み（`test_read_history_accepts_existing_v2_and_valid_v3_records` ほか既存テスト） |
 | 学習済み係数・既定係数の既存の出力形（`correction` なし）が変わらない | must | カバー済み（`test_cold_start_runs_whole_flow`・`test_learned_factor_wins_over_default`） |
 
+## レビューで足した観点（2026-10-16、autonomous-review）
+
+| 観点 | 優先度 | 状態 |
+|---|---|---|
+| 比率は丸めずに掛ける（表示だけ2桁） | must | 追加済み（`test_ai_view_correction_applies_unrounded_ratios`） |
+| 期待値 × 係数が0に下位あふれするレコードでゼロ除算しない（BVA適用） | should | 追加済み（`test_ai_view_correction_ignores_underflowing_denominators`） |
+| 従来型の補正で外した AI実績の件数を返す | must | 追加済み（`test_only_ai_assisted_actuals_leave_traditional_uncorrected`・`test_applied_correction_reports_excluded_ai_assisted`） |
+| AI支援の補正を見送った理由（件数・係数のない件数）を返し、感度の幅では固定しない | must | 追加済み（`test_ai_view_correction_needs_five_ai_actuals`・`test_ai_actuals_without_recorded_factor_are_ignored`・`test_ai_view_skip_marker_keeps_task_in_sensitivity`） |
+
 ## 6. フレームワーク結合
 
 | 観点 | 優先度 | 状態 |

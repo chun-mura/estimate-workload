@@ -618,8 +618,22 @@ class TestReferenceClass(HistoryBase):
             "history_path": self.path,
             "tasks": [{"name": "t", "category": "backend-api", "tags": []}],
         })
+        # 外した件数を示し、実績がないのと区別できるようにする。
         self.assertEqual(out["tasks"][0]["correction"],
-                         {"skipped": "insufficient_data", "count": 0})
+                         {"skipped": "insufficient_data", "count": 0,
+                          "excluded_ai_assisted": 5})
+
+    def test_applied_correction_reports_excluded_ai_assisted(self):
+        recs = [_done_record(i, actual=20.0) for i in range(5)]
+        recs += [_done_record(9, actual=4.0, ai=True),
+                 _done_record(10, category="docs", actual=4.0, ai=True)]
+        self.write_done(recs)
+        out = ec.cmd_reference_class({
+            "history_path": self.path,
+            "tasks": [{"name": "t", "category": "backend-api", "tags": [],
+                       "m": 8, "p": 16}],
+        })
+        self.assertEqual(out["tasks"][0]["correction"]["excluded_ai_assisted"], 1)
 
 
 class TestCalibration(TestReferenceClass):
@@ -1002,6 +1016,28 @@ class TestPipeline(HistoryBase):
         expected = self.replay_ai(out, [{"o": 4, "m": 8, "p": 35.2, "factor": 0.8}])
         self.assertEqual(out["ai_assisted"], expected)
 
+    def test_ai_view_correction_applies_unrounded_ratios(self):
+        # 比率 1.0049 は表示では 1.0 だが、計算には丸めない値を使う。
+        self.write_done(self.ai_done(5, actual=8.0392))
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        self.assertEqual(out["tasks"][0]["ai_factor"]["correction"]["ratio_p50"], 1.0)
+        expected = self.replay_ai(out, [{"o": 4.02, "m": 8.04, "p": 16.08,
+                                         "factor": 0.8}])
+        self.assertEqual(out["ai_assisted"], expected)
+
+    def test_ai_view_correction_ignores_underflowing_denominators(self):
+        recs = [_done_record(i, tags=["auth"], pert=0.01, actual=1.0, ai=True,
+                             factor=5e-324) for i in range(5)]
+        self.write_done(recs)
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        self.assertEqual(out["tasks"][0]["ai_factor"]["correction"],
+                         {"skipped": "insufficient_data", "count": 0})
+
+    def test_ai_view_skip_marker_keeps_task_in_sensitivity(self):
+        self.write_done(self.ai_done(4))
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        self.assertIsNotNone(out["ai_sensitivity"])
+
     def test_ai_view_correction_drops_low_sample_at_ten(self):
         self.write_done(self.ai_done(10))
         out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
@@ -1033,8 +1069,10 @@ class TestPipeline(HistoryBase):
     def test_ai_view_correction_needs_five_ai_actuals(self):
         self.write_done(self.ai_done(4))
         out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
-        self.assertEqual(out["tasks"][0]["ai_factor"],
-                         {"factor": 0.8, "source": "default"})
+        self.assertEqual(out["tasks"][0]["ai_factor"], {
+            "factor": 0.8, "source": "default",
+            "correction": {"skipped": "insufficient_data", "count": 4},
+        })
         expected = self.replay_ai(out, [{"o": 4, "m": 8, "p": 16, "factor": 0.8}])
         self.assertEqual(out["ai_assisted"], expected)
 
@@ -1042,7 +1080,10 @@ class TestPipeline(HistoryBase):
         recs = [_done_record(i, tags=["auth"], actual=16.0, ai=True) for i in range(5)]
         self.write_done(recs)
         out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
-        self.assertNotIn("correction", out["tasks"][0]["ai_factor"])
+        # 0.14.0 より前に記録した実績は係数を持たない。使えない理由を件数で示す。
+        self.assertEqual(out["tasks"][0]["ai_factor"]["correction"],
+                         {"skipped": "insufficient_data", "count": 0,
+                          "missing_ai_factor": 5})
 
     def test_human_actuals_do_not_feed_the_ai_view_correction(self):
         recs = [_done_record(i, tags=["auth"], actual=16.0, ai=False, factor=0.8)

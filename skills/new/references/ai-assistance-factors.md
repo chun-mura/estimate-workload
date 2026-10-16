@@ -28,7 +28,7 @@ The factor model is deliberately simple (hours × factor). It captures tool leve
 
 ## Sensitivity range
 
-While any task uses a default factor, `pipeline` also returns `ai_sensitivity`: the AI-assisted total re-simulated with the optimistic and conservative factors below (same seed; learned factors and tasks with `correction` stay fixed). The values live in `estimate_calc.py` (`AI_SENSITIVITY_FACTORS`) — never pass them in the payload. This table documents them.
+While any task uses a default factor without an applied correction, `pipeline` also returns `ai_sensitivity`: the AI-assisted total re-simulated with the optimistic and conservative factors below (same seed; learned factors and tasks with an applied `correction` stay fixed). The values live in `estimate_calc.py` (`AI_SENSITIVITY_FACTORS`) — never pass them in the payload. This table documents them.
 
 | Category | Optimistic | Central (default) | Conservative |
 |---|---|---|---|
