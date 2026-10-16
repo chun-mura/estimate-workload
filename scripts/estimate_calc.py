@@ -259,6 +259,9 @@ def schema_error(rec):
         return "'ai_assisted' must be null or a boolean"
     if rec.get("actual_basis") not in (None, *ACTUAL_BASES):
         return f"'actual_basis' must be null or one of {list(ACTUAL_BASES)}"
+    if "ai_factor" in rec and (
+            not _is_number(rec["ai_factor"]) or rec["ai_factor"] <= 0):
+        return "'ai_factor' must be a positive number"
     if rec.get("status") not in ("estimated", "done"):
         return f"unknown status: {rec.get('status')!r}"
     if sv == 3:
@@ -383,6 +386,9 @@ def cmd_append_history(payload):
         if not isinstance(tags, list) or not all(isinstance(x, str) for x in tags):
             raise CalcError(f"{label}: 'tags' must be a list of strings")
         validate_three_point(t, label)
+        if "ai_factor" in t and (
+                not _is_number(t["ai_factor"]) or t["ai_factor"] <= 0):
+            raise CalcError(f"{label}: 'ai_factor' must be a positive number")
 
     lock_timeout = payload.get("lock_timeout", 5.0)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
@@ -414,6 +420,9 @@ def cmd_append_history(payload):
                 "ai_assisted": None,
                 "status": "estimated",
             }
+            # 見積もったときの係数。AI支援の値を実績で補正するときの分母に使う。
+            if "ai_factor" in t:
+                rec["ai_factor"] = t["ai_factor"]
             if record_schema == SCHEMA_VERSION:
                 rec["run_context"] = context
                 rec["run_summary"] = summary
@@ -593,11 +602,9 @@ def cmd_reference_class(payload):
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
             raise CalcError(f"reference-class: '{key}' must be a positive integer")
     records, warnings = read_history(path)
-    done = [
-        r for r in records
-        if r["status"] == "done" and _is_number(r.get("actual"))
-        and r["actual"] > 0 and r["pert"] > 0
-    ]
+    # 従来型は AIなしの実績だけで補正する。AIを使った実績を混ぜると、AI支援の
+    # 係数を掛けたときに AIの効果を二重に数える。
+    done = [r for r in _done_records(records) if r.get("ai_assisted") is not True]
     results = []
     for i, t in enumerate(tasks):
         if t.get("category") not in CATEGORIES:
@@ -619,11 +626,7 @@ def cmd_reference_class(payload):
         entry = {"name": t.get("name", ""), "anchors": anchors}
         # アンカーが示す母集団と同じデータから補正する。タグが重なるレコードを優先し、
         # タグ一致の母集団が補正に小さすぎる場合にだけ、カテゴリ全体へフォールバックする。
-        tag_matched = [r for r in same_cat if tags & set(r["tags"])] if tags else []
-        if len(tag_matched) >= min_records:
-            pool, basis = tag_matched, "category_and_tags"
-        else:
-            pool, basis = same_cat, "category"
+        pool, basis = _pool(same_cat, tags, min_records)
         ratios = [r["actual"] / r["pert"] for r in pool]
         if len(ratios) < min_records:
             entry["correction"] = {"skipped": "insufficient_data", "count": len(ratios)}
@@ -652,16 +655,46 @@ def cmd_reference_class(payload):
     return {"tasks": results, "warnings": warnings}
 
 
+def _done_records(records):
+    return [
+        r for r in records
+        if r["status"] == "done" and _is_number(r.get("actual"))
+        and r["actual"] > 0 and r["pert"] > 0
+    ]
+
+
+def _pool(same_cat, tags, min_records):
+    """タグが重なるレコードを優先し、補正に足りなければカテゴリ全体を使う。"""
+    tag_matched = [r for r in same_cat if tags & set(r["tags"])] if tags else []
+    if len(tag_matched) >= min_records:
+        return tag_matched, "category_and_tags"
+    return same_cat, "category"
+
+
+def _ai_view_correction(ai_done, category, tags, min_records=5):
+    """AIを使った実績から、AI支援の値に掛ける比率を求める。足りなければ None。"""
+    same_cat = [r for r in ai_done if r["category"] == category]
+    pool, basis = _pool(same_cat, set(tags), min_records)
+    if len(pool) < min_records:
+        return None
+    ratios = [r["actual"] / (r["pert"] * r["ai_factor"]) for r in pool]
+    correction = {
+        "count": len(ratios),
+        "basis": basis,
+        "ratio_p50": round(percentile(ratios, 50), 2),
+        "ratio_p80": round(percentile(ratios, 80), 2),
+    }
+    if len(ratios) < LOW_SAMPLE_THRESHOLD:
+        correction["low_sample"] = True
+    return correction
+
+
 def cmd_calibration(payload):
     path = payload.get("history_path")
     if not isinstance(path, str) or not path:
         raise CalcError("calibration: 'history_path' is required")
     records, warnings = read_history(path)
-    done = [
-        r for r in records
-        if r["status"] == "done" and _is_number(r.get("actual"))
-        and r["actual"] > 0 and r["pert"] > 0
-    ]
+    done = _done_records(records)
     if not done:
         return {"skipped": "no_completed_records", "warnings": warnings}
     ratios = [r["actual"] / r["pert"] for r in done]
@@ -791,9 +824,13 @@ def cmd_pipeline(payload):
     if ai_view:
         calibration = cmd_calibration({"history_path": history_path})
         learned = calibration.get("ai_assistance_factors") or {}
+        records, _warnings = read_history(history_path)
+        ai_done = [r for r in _done_records(records)
+                   if r.get("ai_assisted") is True and "ai_factor" in r]
         ai_tasks = []
         for t, ft in zip(tasks, final):
             entry = learned.get(ft["category"])
+            o, m, p = ft["o"], ft["m"], ft["p"]
             if entry:
                 info = {"factor": entry["factor"], "source": "learned"}
                 if entry.get("low_sample"):
@@ -802,19 +839,27 @@ def cmd_pipeline(payload):
                     info["untracked_count"] = entry["untracked_count"]
             else:
                 info = {"factor": t["default_factor"], "source": "default"}
+                # 学習済みの係数がないときは、AIを使った実績で AI支援の値を直接補正する。
+                correction = _ai_view_correction(ai_done, ft["category"], ft["tags"])
+                if correction:
+                    info["correction"] = correction
+                    r50, r80 = correction["ratio_p50"], correction["ratio_p80"]
+                    o, m, p = round(o * r50, 2), round(m * r50, 2), round(p * r80, 2)
             factors.append(info)
-            ai_tasks.append({"name": ft["task"], "o": ft["o"], "m": ft["m"],
-                             "p": ft["p"], "factor": info["factor"]})
+            ai_tasks.append({"name": ft["task"], "o": o, "m": m, "p": p,
+                             "factor": info["factor"]})
         ai_assisted = cmd_simulate({**sim_base, "tasks": ai_tasks})
-        # 既定係数のタスクが残る間は、係数の仮定による幅を出す。learned の係数は
-        # 固定し、同じ seed を使って係数の違いだけが差になるようにする。
-        if any(info["source"] == "default" for info in factors):
+        # 実績で裏づけのない既定係数のタスクが残る間は、係数の仮定による幅を出す。
+        # learned の係数と実績で補正したタスクは固定し、同じ seed を使って係数の
+        # 違いだけが差になるようにする。
+        assumed = [info["source"] == "default" and "correction" not in info
+                   for info in factors]
+        if any(assumed):
             ai_sensitivity = {"central": ai_assisted["total"]}
             for scenario, table in AI_SENSITIVITY_FACTORS.items():
                 scenario_tasks = [
-                    {**at, "factor": table[ft["category"]]}
-                    if info["source"] == "default" else at
-                    for at, ft, info in zip(ai_tasks, final, factors)
+                    {**at, "factor": table[ft["category"]]} if free else at
+                    for at, ft, free in zip(ai_tasks, final, assumed)
                 ]
                 ai_sensitivity[scenario] = cmd_simulate({
                     **sim_base, "seed": ai_assisted["seed"], "tasks": scenario_tasks,
@@ -827,6 +872,9 @@ def cmd_pipeline(payload):
             for t in final
         ],
     }
+    if ai_view:
+        for at, info in zip(append_payload["tasks"], factors):
+            at["ai_factor"] = info["factor"]
     if "lock_timeout" in payload:
         append_payload["lock_timeout"] = payload["lock_timeout"]
     run_summary = {

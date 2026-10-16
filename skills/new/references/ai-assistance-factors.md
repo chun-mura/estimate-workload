@@ -1,6 +1,6 @@
 # Default AI-assistance factors
 
-Multiplier applied to a task's O/M/P hours to express effort when the developer works with an agentic coding tool. These defaults are heuristics for cold start — once `calibration` returns a learned factor for a category (requires ≥ 3 AI-assisted and ≥ 3 non-assisted completed records), the learned factor wins.
+Multiplier applied to a task's O/M/P hours to express effort when the developer works with an agentic coding tool. These defaults are heuristics for cold start — once `calibration` returns a learned factor for a category (requires ≥ 3 AI-assisted and ≥ 3 non-assisted completed records), the learned factor wins. Without a learned factor, `pipeline` corrects the AI-assisted view directly when the category has ≥ 5 completed AI-assisted records that store the `ai_factor` they were estimated with (ratio = actual ÷ (expected × `ai_factor`); returned as `ai_factor.correction`). The traditional view is corrected only from non-assisted records, so AI-assisted actuals never discount it.
 
 Defaults follow field and enterprise evidence on real work, not lab upper bounds:
 
@@ -28,7 +28,7 @@ The factor model is deliberately simple (hours × factor). It captures tool leve
 
 ## Sensitivity range
 
-While any task uses a default factor, `pipeline` also returns `ai_sensitivity`: the AI-assisted total re-simulated with the optimistic and conservative factors below (same seed; learned factors stay fixed). The values live in `estimate_calc.py` (`AI_SENSITIVITY_FACTORS`) — never pass them in the payload. This table documents them.
+While any task uses a default factor, `pipeline` also returns `ai_sensitivity`: the AI-assisted total re-simulated with the optimistic and conservative factors below (same seed; learned factors and tasks with `correction` stay fixed). The values live in `estimate_calc.py` (`AI_SENSITIVITY_FACTORS`) — never pass them in the payload. This table documents them.
 
 | Category | Optimistic | Central (default) | Conservative |
 |---|---|---|---|

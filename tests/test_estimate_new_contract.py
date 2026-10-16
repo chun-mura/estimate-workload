@@ -14,7 +14,7 @@ CHANGELOG = ROOT / "CHANGELOG.md"
 class TestEstimateNewQaContract(unittest.TestCase):
     def test_release_metadata_contract(self):
         plugin = json.loads(PLUGIN.read_text(encoding="utf-8"))
-        self.assertEqual(plugin["version"], "0.13.0")
+        self.assertEqual(plugin["version"], "0.14.0")
         changelog = CHANGELOG.read_text(encoding="utf-8")
         for required in ("0.10.0", "0.11.0", "粒度", "比較", "v3", "run_context"):
             self.assertIn(required, changelog)
@@ -26,8 +26,11 @@ class TestEstimateNewQaContract(unittest.TestCase):
         previous = changelog.split("## [0.12.0]", 1)[1].split("\n## ", 1)[0]
         for required in ("ai_sensitivity", "docs", "0.60"):
             self.assertIn(required, previous)
-        latest = changelog.split("## [0.13.0]", 1)[1].split("\n## ", 1)[0]
+        before = changelog.split("## [0.13.0]", 1)[1].split("\n## ", 1)[0]
         for required in ("actual_basis", "untracked_count", "record"):
+            self.assertIn(required, before)
+        latest = changelog.split("## [0.14.0]", 1)[1].split("\n## ", 1)[0]
+        for required in ("ai_factor", "correction", "ai_assisted"):
             self.assertIn(required, latest)
 
     def test_record_asks_for_actual_basis(self):
