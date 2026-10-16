@@ -251,6 +251,25 @@ class TestAppendHistory(HistoryBase):
             self.append(tasks=[{"task": "x", "category": "docs", "tags": [],
                                 "o": 5, "m": 2, "p": 3}])
 
+    def test_stores_ai_factor_when_given(self):
+        tasks = [{"task": "x", "category": "docs", "tags": [],
+                  "o": 1, "m": 2, "p": 3, "ai_factor": 0.6},
+                 {"task": "y", "category": "docs", "tags": [],
+                  "o": 1, "m": 2, "p": 3}]
+        self.append(tasks=tasks)
+        recs = [json.loads(l) for l in self.raw_lines()]
+        self.assertEqual(recs[0]["ai_factor"], 0.6)
+        self.assertNotIn("ai_factor", recs[1])
+        self.assertEqual(ec.read_history(self.path)[1], [])
+
+    def test_rejects_invalid_ai_factor(self):
+        for bad in (0, -0.5, "0.8", True, None):
+            tasks = [{"task": "x", "category": "docs", "tags": [],
+                      "o": 1, "m": 2, "p": 3, "ai_factor": bad}]
+            with self.subTest(bad=bad), self.assertRaisesRegex(ec.CalcError, "ai_factor"):
+                self.append(tasks=tasks)
+        self.assertFalse(os.path.exists(self.path))
+
     def test_lock_contention_fails_fast(self):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         lock = self.path + ".lock"
@@ -362,6 +381,15 @@ class TestUpdateActual(HistoryBase):
         rec = _done_record(1, basis="guessed")
         self.assertIn("actual_basis", ec.schema_error(rec))
 
+    def test_schema_checks_ai_factor_only_when_present(self):
+        self.assertIsNone(ec.schema_error(_done_record(1)))
+        self.assertIsNone(ec.schema_error(_done_record(1, factor=0.8)))
+        for bad in (0, -1, "0.8", True, None):
+            rec = _done_record(1)
+            rec["ai_factor"] = bad
+            with self.subTest(bad=bad):
+                self.assertIn("ai_factor", ec.schema_error(rec))
+
     def test_rejects_nonpositive_actual(self):
         out = self.append()
         task_id = out["run_id"] + "-01"
@@ -405,7 +433,7 @@ class TestUpdateActual(HistoryBase):
 
 
 def _done_record(i, category="backend-api", tags=(), pert=10.0, actual=10.0,
-                 ai=False, date="2026-06-01", basis=None):
+                 ai=False, date="2026-06-01", basis=None, factor=None):
     rec = {
         "schema_version": 2, "run_id": f"r{i}", "id": f"r{i}-01", "date": date,
         "task": f"past task {i}", "category": category, "tags": list(tags),
@@ -414,6 +442,8 @@ def _done_record(i, category="backend-api", tags=(), pert=10.0, actual=10.0,
     }
     if basis is not None:
         rec["actual_basis"] = basis
+    if factor is not None:
+        rec["ai_factor"] = factor
     return rec
 
 
@@ -562,6 +592,48 @@ class TestReferenceClass(HistoryBase):
             "tasks": [{"name": "t", "category": "backend-api", "tags": []}],
         })
         self.assertIsNone(out["tasks"][0]["anchors"][0]["ai_assisted"])
+
+    def test_ai_assisted_actuals_are_excluded_from_anchors_and_correction(self):
+        # AIを使った実績で従来型を補正すると、AI支援の係数と二重に効く。
+        recs = [_done_record(i, actual=4.0, ai=True) for i in range(5)]
+        recs += [_done_record(i + 5, actual=20.0, ai=False) for i in range(4)]
+        no_key = _done_record(9, actual=20.0)
+        del no_key["ai_assisted"]
+        recs.append(no_key)
+        self.write_done(recs)
+        out = ec.cmd_reference_class({
+            "history_path": self.path, "max_anchors": 10,
+            "tasks": [{"name": "t", "category": "backend-api", "tags": [],
+                       "m": 8, "p": 16}],
+        })
+        entry = out["tasks"][0]
+        self.assertEqual(len(entry["anchors"]), 5)
+        self.assertTrue(all(a["ai_assisted"] is not True for a in entry["anchors"]))
+        self.assertEqual(entry["correction"]["count"], 5)
+        self.assertEqual(entry["correction"]["ratio_p50"], 2.0)
+
+    def test_only_ai_assisted_actuals_leave_traditional_uncorrected(self):
+        self.write_done([_done_record(i, actual=4.0, ai=True) for i in range(5)])
+        out = ec.cmd_reference_class({
+            "history_path": self.path,
+            "tasks": [{"name": "t", "category": "backend-api", "tags": []}],
+        })
+        # 外した件数を示し、実績がないのと区別できるようにする。
+        self.assertEqual(out["tasks"][0]["correction"],
+                         {"skipped": "insufficient_data", "count": 0,
+                          "excluded_ai_assisted": 5})
+
+    def test_applied_correction_reports_excluded_ai_assisted(self):
+        recs = [_done_record(i, actual=20.0) for i in range(5)]
+        recs += [_done_record(9, actual=4.0, ai=True),
+                 _done_record(10, category="docs", actual=4.0, ai=True)]
+        self.write_done(recs)
+        out = ec.cmd_reference_class({
+            "history_path": self.path,
+            "tasks": [{"name": "t", "category": "backend-api", "tags": [],
+                       "m": 8, "p": 16}],
+        })
+        self.assertEqual(out["tasks"][0]["correction"]["excluded_ai_assisted"], 1)
 
 
 class TestCalibration(TestReferenceClass):
@@ -895,6 +967,158 @@ class TestPipeline(HistoryBase):
         expected = ec.cmd_simulate({"tasks": tasks, "trials": 500,
                                     "seed": out["simulation"]["ai_assisted_seed"]})
         self.assertEqual(out["ai_sensitivity"]["conservative"], expected["total"])
+
+    def test_history_records_the_ai_factor_used(self):
+        out = ec.cmd_pipeline(self.payload())
+        recs = [json.loads(l) for l in self.raw_lines()]
+        self.assertEqual([r["ai_factor"] for r in recs], [0.55, 0.50])
+        self.assertEqual(out["tasks"][0]["ai_factor"]["factor"], 0.55)
+
+    def test_history_omits_ai_factor_without_ai_view(self):
+        ec.cmd_pipeline(self.payload(ai_view=False))
+        recs = [json.loads(l) for l in self.raw_lines()]
+        self.assertTrue(all("ai_factor" not in r for r in recs))
+
+    AI_TASK = {"task": "Add endpoint", "category": "backend-api", "tags": ["auth"],
+               "o": 4, "m": 8, "p": 16, "default_factor": 0.8}
+
+    def ai_done(self, n, actual=16.0, factor=0.8):
+        # pert 10 × factor 0.8 = 8 に対して actual 16 → 比率 2.0
+        return [_done_record(i, tags=["auth"], actual=actual, ai=True, factor=factor)
+                for i in range(n)]
+
+    def replay_ai(self, out, tasks):
+        return ec.cmd_simulate({"tasks": tasks, "trials": 500,
+                                "seed": out["simulation"]["ai_assisted_seed"]})["total"]
+
+    def test_ai_actuals_correct_the_ai_view_directly(self):
+        self.write_done(self.ai_done(5))
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        t = out["tasks"][0]
+        # 従来型は AIなしの実績がないので補正しない。
+        self.assertEqual((t["o"], t["m"], t["p"]), (4, 8, 16))
+        self.assertEqual(t["ai_factor"], {
+            "factor": 0.8, "source": "default",
+            "correction": {"count": 5, "basis": "category_and_tags",
+                           "ratio_p50": 2.0, "ratio_p80": 2.0, "low_sample": True},
+        })
+        expected = self.replay_ai(out, [{"o": 8, "m": 16, "p": 32, "factor": 0.8}])
+        self.assertEqual(out["ai_assisted"], expected)
+
+    def test_ai_view_correction_uses_p80_ratio_for_p(self):
+        # 比率 1, 1, 1, 2, 3 → p50 = 1.0, p80 = 2.2
+        recs = [_done_record(i, tags=["auth"], actual=a, ai=True, factor=0.8)
+                for i, a in enumerate((8.0, 8.0, 8.0, 16.0, 24.0))]
+        self.write_done(recs)
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        corr = out["tasks"][0]["ai_factor"]["correction"]
+        self.assertEqual((corr["ratio_p50"], corr["ratio_p80"]), (1.0, 2.2))
+        expected = self.replay_ai(out, [{"o": 4, "m": 8, "p": 35.2, "factor": 0.8}])
+        self.assertEqual(out["ai_assisted"], expected)
+
+    def test_ai_view_correction_applies_unrounded_ratios(self):
+        # 比率 1.0049 は表示では 1.0 だが、計算には丸めない値を使う。
+        self.write_done(self.ai_done(5, actual=8.0392))
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        self.assertEqual(out["tasks"][0]["ai_factor"]["correction"]["ratio_p50"], 1.0)
+        expected = self.replay_ai(out, [{"o": 4.02, "m": 8.04, "p": 16.08,
+                                         "factor": 0.8}])
+        self.assertEqual(out["ai_assisted"], expected)
+
+    def test_ai_view_correction_ignores_underflowing_denominators(self):
+        recs = [_done_record(i, tags=["auth"], pert=0.01, actual=1.0, ai=True,
+                             factor=5e-324) for i in range(5)]
+        self.write_done(recs)
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        self.assertEqual(out["tasks"][0]["ai_factor"]["correction"],
+                         {"skipped": "insufficient_data", "count": 0})
+
+    def test_ai_view_skip_marker_keeps_task_in_sensitivity(self):
+        self.write_done(self.ai_done(4))
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        self.assertIsNotNone(out["ai_sensitivity"])
+
+    def test_ai_view_correction_drops_low_sample_at_ten(self):
+        self.write_done(self.ai_done(10))
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        self.assertNotIn("low_sample", out["tasks"][0]["ai_factor"]["correction"])
+
+    def test_ai_view_correction_falls_back_to_category(self):
+        recs = [_done_record(i, actual=16.0, ai=True, factor=0.8) for i in range(5)]
+        recs.append(_done_record(9, tags=["auth"], actual=16.0, ai=True, factor=0.8))
+        self.write_done(recs)
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        corr = out["tasks"][0]["ai_factor"]["correction"]
+        self.assertEqual((corr["basis"], corr["count"]), ("category", 6))
+
+    def test_recorded_actuals_feed_the_next_ai_view(self):
+        # pipeline → update-actual → pipeline の実経路で ai_factor が往復する。
+        task = dict(self.AI_TASK)
+        for _ in range(5):
+            first = ec.cmd_pipeline(self.payload(tasks=[task]))
+            ec.cmd_update_actual(self.path, first["tasks"][0]["id"], 12.8, True)
+        records, warnings = ec.read_history(self.path)
+        self.assertEqual(warnings, [])
+        self.assertTrue(all(r["ai_factor"] == 0.8 for r in records))
+        out = ec.cmd_pipeline(self.payload(tasks=[task]))
+        corr = out["tasks"][0]["ai_factor"]["correction"]
+        # pert 9.33 × 0.8 に対して実績 12.8 → 比率 1.71
+        self.assertEqual(corr["count"], 5)
+        self.assertEqual(corr["ratio_p50"], round(12.8 / (9.33 * 0.8), 2))
+
+    def test_ai_view_correction_needs_five_ai_actuals(self):
+        self.write_done(self.ai_done(4))
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        self.assertEqual(out["tasks"][0]["ai_factor"], {
+            "factor": 0.8, "source": "default",
+            "correction": {"skipped": "insufficient_data", "count": 4},
+        })
+        expected = self.replay_ai(out, [{"o": 4, "m": 8, "p": 16, "factor": 0.8}])
+        self.assertEqual(out["ai_assisted"], expected)
+
+    def test_ai_actuals_without_recorded_factor_are_ignored(self):
+        recs = [_done_record(i, tags=["auth"], actual=16.0, ai=True) for i in range(5)]
+        self.write_done(recs)
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        # 0.14.0 より前に記録した実績は係数を持たない。使えない理由を件数で示す。
+        self.assertEqual(out["tasks"][0]["ai_factor"]["correction"],
+                         {"skipped": "insufficient_data", "count": 0,
+                          "missing_ai_factor": 5})
+
+    def test_human_actuals_do_not_feed_the_ai_view_correction(self):
+        recs = [_done_record(i, tags=["auth"], actual=16.0, ai=False, factor=0.8)
+                for i in range(5)]
+        self.write_done(recs)
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        self.assertNotIn("correction", out["tasks"][0]["ai_factor"])
+
+    def test_learned_factor_is_not_corrected_again(self):
+        recs = self.ai_done(5)
+        recs += [_done_record(i + 5, tags=["auth"], actual=10.0, ai=False)
+                 for i in range(3)]
+        self.write_done(recs)
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        info = out["tasks"][0]["ai_factor"]
+        self.assertEqual(info["source"], "learned")
+        self.assertNotIn("correction", info)
+
+    def test_corrected_task_stays_fixed_in_sensitivity(self):
+        self.write_done(self.ai_done(5))
+        docs = {"task": "Write guide", "category": "docs", "tags": [],
+                "o": 1, "m": 2, "p": 3, "default_factor": 0.6}
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK), docs]))
+        self.assertIn("correction", out["tasks"][0]["ai_factor"])
+        expected = self.replay_ai(out, [
+            {"o": 8, "m": 16, "p": 32, "factor": 0.8},
+            {"o": 1, "m": 2, "p": 3,
+             "factor": ec.AI_SENSITIVITY_FACTORS["optimistic"]["docs"]},
+        ])
+        self.assertEqual(out["ai_sensitivity"]["optimistic"], expected)
+
+    def test_ai_sensitivity_is_null_when_every_default_task_is_corrected(self):
+        self.write_done(self.ai_done(5))
+        out = ec.cmd_pipeline(self.payload(tasks=[dict(self.AI_TASK)]))
+        self.assertIsNone(out["ai_sensitivity"])
 
     def test_sensitivity_factors_cover_every_category(self):
         for scenario in ("optimistic", "conservative"):

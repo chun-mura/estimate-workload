@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-16
+
+### 変更
+
+- 従来型の参照クラス補正（`reference-class` と `pipeline`）は、`ai_assisted` が `true` の実績を使わないようにした。AIを使った実績で従来型を補正すると、AI支援の係数を掛けたときに AIの効果を二重に数えていた。これまで AIを使った実績で従来型が補正されていたプロジェクトでは、補正が弱まるか効かなくなる。
+- 従来型の補正で外した AIを使った実績の件数を `correction.excluded_ai_assisted` に返すようにした。
+- `ai_sensitivity` の楽観・保守は、実績で補正していない既定係数のタスクだけを動かすようにした。
+
+### 追加
+
+- `append-history` の各タスクに任意の `ai_factor`（正の数）を追加し、履歴に保存するようにした。`pipeline` は AI支援の見積もりで使った係数（補正前）を記録する。スキーマのバージョンは変えない。
+- 学習済みの係数がないカテゴリでは、`ai_assisted` が `true` で `ai_factor` を持つ同カテゴリの実績が5件以上あれば、「実績 ÷（期待値 × `ai_factor`）」の比率で AI支援の値を直接補正するようにした。結果は `pipeline` の `ai_factor.correction`（`count`・`basis`・`ratio_p50`・`ratio_p80`・`low_sample`）に返す。比率は丸めずに掛け、表示だけ小数2桁にする。同じカテゴリに AIを使った実績があっても補正できないときは、`correction` に `skipped`・`count`（使えた件数）を返し、係数の記録がない実績があれば `missing_ai_factor`（その件数）も返す。
+
 ## [0.13.0] - 2026-10-15
 
 ### 追加
