@@ -74,7 +74,7 @@ AI支援の感度（係数の仮定別）
 
 | カテゴリ | 係数 | 出典 |
 |---|---|---|
-| <category> | <ai_factor> | <learned / default。learned で untracked_count があれば「learned（記録のない実績 n件を含む・参考値）」。default で correction があれば「default（AIを使った実績 n件で ×ratio_p50 に補正。low_sample なら参考値）」、correction が skipped なら「default（AIを使った実績 n件。係数の記録なし m件）」> |
+| <category> | <ai_factor> | <learned / default。learned で untracked_count があれば「learned（記録のない実績 n件を含む・参考値）」。default で correction があれば「default（AIを使った実績 n件で ×ratio_p50 に補正。low_sample なら参考値）」、correction が skipped なら「default（補正に使えるAI実績 n件で不足）」、missing_ai_factor があれば「（係数の記録がない実績 m件）」を添える> |
 
 ## 前提条件
 

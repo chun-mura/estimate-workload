@@ -17,7 +17,7 @@
 ### 追加
 
 - `append-history` の各タスクに任意の `ai_factor`（正の数）を追加し、履歴に保存するようにした。`pipeline` は AI支援の見積もりで使った係数（補正前）を記録する。スキーマのバージョンは変えない。
-- 学習済みの係数がないカテゴリでは、`ai_assisted` が `true` で `ai_factor` を持つ同カテゴリの実績が5件以上あれば、「実績 ÷（期待値 × `ai_factor`）」の比率で AI支援の値を直接補正するようにした。結果は `pipeline` の `ai_factor.correction`（`count`・`basis`・`ratio_p50`・`ratio_p80`・`low_sample`）に返す。比率は丸めずに掛け、表示だけ小数2桁にする。同じカテゴリに AIを使った実績があっても補正できないときは、`correction` に `skipped`・`count`（使えた件数）・`missing_ai_factor`（係数の記録がない件数）を返す。
+- 学習済みの係数がないカテゴリでは、`ai_assisted` が `true` で `ai_factor` を持つ同カテゴリの実績が5件以上あれば、「実績 ÷（期待値 × `ai_factor`）」の比率で AI支援の値を直接補正するようにした。結果は `pipeline` の `ai_factor.correction`（`count`・`basis`・`ratio_p50`・`ratio_p80`・`low_sample`）に返す。比率は丸めずに掛け、表示だけ小数2桁にする。同じカテゴリに AIを使った実績があっても補正できないときは、`correction` に `skipped`・`count`（使えた件数）を返し、係数の記録がない実績があれば `missing_ai_factor`（その件数）も返す。
 
 ## [0.13.0] - 2026-10-15
 
