@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-28
+
+### 追加
+
+- Codex 用の custom agent TOML を `.codex/agents/` に置いた。正本は既存の `agents/*.md` で、`scripts/generate-codex-agents.py` が必須3キー (`name` / `description` / `developer_instructions`) だけを出す。spawn 名は `estimate-spec-analyzer` / `estimate-code-analyzer`。Codex のプラグイン導入では TOML は届かないので、`scripts/install-codex-agents.sh` が `~/.codex/agents/`（`--project` なら今のリポ）へコピーする。`--check` が未導入と正本とのずれを見る。
+
+### 変更
+
+- プラグインバージョンを `0.14.0` に更新した。
+
 ## [0.13.0] - 2026-10-15
 
 ### 追加

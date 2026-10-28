@@ -24,5 +24,8 @@ jobs:
       - name: Install pytest
         run: pip install pytest
 
+      - name: Check Codex agent TOML is up to date
+        run: python3 scripts/generate-codex-agents.py --check
+
       - name: Run test suite
         run: python3 -m pytest tests/
