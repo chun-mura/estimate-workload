@@ -35,6 +35,18 @@
 claude --plugin-dir .
 ```
 
+### Codex CLI (custom agents)
+
+Codex のプラグイン導入だけではサブエージェント定義は届かない。Codex が読むのは `~/.codex/agents/` か、今のリポの `.codex/agents/` だけだからである。プラグインのディレクトリで次を実行する:
+
+```bash
+bash scripts/install-codex-agents.sh            # このマシンの全プロジェクト
+bash scripts/install-codex-agents.sh --project  # 今のリポだけ（チーム共有）
+bash scripts/install-codex-agents.sh --check    # 未導入・正本とのずれ
+```
+
+spawn 名は `estimate-spec-analyzer` / `estimate-code-analyzer`。`agents/*.md` を変えたら `python3 scripts/generate-codex-agents.py` を同じコミットで回す。
+
 ## 使い方
 
 ### 1. 見積もりを作成する
@@ -162,7 +174,7 @@ AI支援係数は、各カテゴリで AI支援あり・なしの完了実績が
 
 ## バージョニング
 
-`scripts/`・`skills/`・`agents/` のいずれかを変更したら、同じコミットまたは PR で次を更新してください。
+`scripts/`・`skills/`・`agents/` のいずれかを変更したら、同じコミットまたは PR で次を更新してください。`agents/*.md` を変えたら `python3 scripts/generate-codex-agents.py` も回してください。
 
 - `.claude-plugin/plugin.json` の `version`
 - `CHANGELOG.md`

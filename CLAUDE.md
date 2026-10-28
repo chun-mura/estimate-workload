@@ -12,14 +12,15 @@ reference-class calibration against project history. No hooks, no MCP server
 ## Commands
 
 ```bash
-python3 -m pytest tests/        # run the full test suite (96 tests)
+python3 -m pytest tests/        # run the full test suite
+python3 scripts/generate-codex-agents.py --check
 claude --plugin-dir .           # mount this plugin locally without the marketplace, for manual testing
 ```
 
 `.github/workflows/validate.yml` runs on push/PR to `main`: validates
-`.claude-plugin/plugin.json` and `marketplace.json` as JSON, then runs the
-pytest suite. Running `pytest` locally before committing remains useful for
-fast feedback, but CI is now the enforced gate.
+`.claude-plugin/plugin.json` and `marketplace.json` as JSON, checks
+`.codex/agents/*.toml` against `agents/*.md`, then runs the pytest suite.
+After editing `agents/*.md`, run `python3 scripts/generate-codex-agents.py`.
 
 ## Architecture
 
